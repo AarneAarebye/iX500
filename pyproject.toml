@@ -10,9 +10,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+menubar = ["rumps>=0.4"]
 
 [project.scripts]
 scanix500 = "scanix500.cli:main"
+scanix500-menubar = "scanix500.menubar.app:main"
 
 [build-system]
 requires = ["hatchling"]

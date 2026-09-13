@@ -87,3 +87,55 @@ Run these by hand against the real iX500 after any change to `capture.py` or
 - [ ] Scan a stack to the bottom without intervening: the ADF terminates
       cleanly — the batch ends by itself with no error and no hang once the
       last sheet has fed.
+
+## Phase 2: Menu bar app
+
+### Install
+
+    pip install -e ".[menubar]"
+
+### Run manually
+
+    scanix500-menubar
+
+A menu bar icon (📄) appears with one item per saved profile, plus
+Add/Edit/Delete Profile submenus. Profiles are stored at
+`~/Library/Application Support/scanix500/profiles.json` and seeded with a
+single "Default" profile on first run.
+
+### Auto-launch at login
+
+1. Find the installed script's full path: `which scanix500-menubar`
+2. Copy `packaging/com.scanix500.menubar.plist` to `~/Library/LaunchAgents/`
+3. Edit the copied plist's `ProgramArguments` entry to the path from step 1
+4. `launchctl load ~/Library/LaunchAgents/com.scanix500.menubar.plist`
+
+To stop it from auto-launching: `launchctl unload ~/Library/LaunchAgents/com.scanix500.menubar.plist`
+then remove the plist file.
+
+### Manual UI checklist
+
+Run these by hand — `app.py` has no automated tests, since it's live
+GUI/AppKit code:
+
+- [ ] Clicking a profile in the menu triggers a scan; the icon changes
+      to the "scanning" state and reverts when done.
+- [ ] A successful scan shows a "Scan complete" notification naming the
+      output path.
+- [ ] An all-blank batch shows a notification with that message, no crash.
+- [ ] A scanner-not-found or other hard failure shows a "Scan failed"
+      notification with a clear message.
+- [ ] A multi-feed jam (see Phase 1's manual hardware checklist) shows a
+      "Scan partially completed" notification distinct from a bare failure,
+      naming the partial output path.
+- [ ] Add Profile: name entry → folder picker → three yes/no prompts →
+      new profile appears in the menu and in `profiles.json`.
+- [ ] Edit Profile: existing values are used as the starting point in the
+      name/destination prompts; changes are saved and reflected in the menu.
+- [ ] Delete Profile: confirmation prompt appears; deleting the last
+      remaining profile is refused with a clear alert instead of silently
+      failing or leaving an empty menu.
+- [ ] Clicking a profile, or Add/Edit/Delete, while a scan is already in
+      progress does nothing (no double-scan, no crash).
+- [ ] Quit and relaunch `scanix500-menubar`: profiles persist correctly
+      from `profiles.json`.
