@@ -73,3 +73,17 @@ def test_delete_profile_removes_the_matching_entry_by_name():
     result = delete_profile(existing, "Documents")
 
     assert result == [existing[1]]
+
+
+def test_delete_profile_raises_for_unknown_name():
+    existing = [Profile(name="Documents", destination="/tmp/docs")]
+
+    with pytest.raises(ValueError):
+        delete_profile(existing, "NoSuchProfile")
+
+
+def test_delete_profile_raises_when_only_one_profile_remains():
+    existing = [Profile(name="Documents", destination="/tmp/docs")]
+
+    with pytest.raises(ValueError):
+        delete_profile(existing, "Documents")
