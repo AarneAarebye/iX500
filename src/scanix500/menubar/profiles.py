@@ -41,3 +41,9 @@ def save_profiles(path: Path, profiles: list[Profile]) -> None:
 
 def add_profile(profiles: list[Profile], profile: Profile) -> list[Profile]:
     return [*profiles, profile]
+
+
+def replace_profile(profiles: list[Profile], name: str, updated: Profile) -> list[Profile]:
+    if not any(p.name == name for p in profiles):
+        raise ValueError(f"No profile named {name!r}")
+    return [updated if p.name == name else p for p in profiles]

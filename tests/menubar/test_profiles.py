@@ -1,6 +1,12 @@
 from pathlib import Path
 
-from scanix500.menubar.profiles import Profile, add_profile, load_profiles, save_profiles
+from scanix500.menubar.profiles import (
+    Profile,
+    add_profile,
+    load_profiles,
+    replace_profile,
+    save_profiles,
+)
 
 
 def test_save_and_load_round_trip(tmp_path):
@@ -34,3 +40,15 @@ def test_add_profile_appends_to_the_list():
 
     assert result == [existing[0], new_profile]
     assert existing == [Profile(name="Documents", destination="/tmp/docs")]  # original untouched
+
+
+def test_replace_profile_updates_the_matching_entry_by_name():
+    existing = [
+        Profile(name="Documents", destination="/tmp/docs"),
+        Profile(name="Receipts", destination="/tmp/receipts"),
+    ]
+    updated = Profile(name="Documents", destination="/tmp/new-docs", skip_ocr=True)
+
+    result = replace_profile(existing, "Documents", updated)
+
+    assert result == [updated, existing[1]]
