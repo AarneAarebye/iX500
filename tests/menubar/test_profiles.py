@@ -45,6 +45,64 @@ def test_add_profile_appends_to_the_list():
     assert existing == [Profile(name="Documents", destination="/tmp/docs")]  # original untouched
 
 
+def test_add_profile_raises_for_duplicate_name():
+    existing = [Profile(name="Documents", destination="/tmp/docs")]
+
+    with pytest.raises(ValueError):
+        add_profile(existing, Profile(name="Documents", destination="/tmp/elsewhere"))
+
+
+def test_replace_profile_raises_when_renaming_onto_an_existing_name():
+    existing = [
+        Profile(name="Documents", destination="/tmp/docs"),
+        Profile(name="Receipts", destination="/tmp/receipts"),
+    ]
+
+    with pytest.raises(ValueError):
+        replace_profile(existing, "Documents", Profile(name="Receipts", destination="/tmp/docs"))
+
+
+def test_replace_profile_allows_keeping_the_same_name():
+    existing = [
+        Profile(name="Documents", destination="/tmp/docs"),
+        Profile(name="Receipts", destination="/tmp/receipts"),
+    ]
+    updated = Profile(name="Documents", destination="/tmp/new-docs", skip_ocr=True)
+
+    result = replace_profile(existing, "Documents", updated)
+
+    assert result == [updated, existing[1]]
+
+
+def test_load_profiles_falls_back_to_default_when_file_is_corrupt(tmp_path):
+    path = tmp_path / "profiles.json"
+    path.write_text("{not valid json")
+
+    loaded = load_profiles(path)
+
+    assert len(loaded) == 1
+    assert loaded[0].name == "Default"
+    assert load_profiles(path) == loaded  # the recovered default was persisted
+
+
+def test_load_profiles_falls_back_to_default_on_unknown_field(tmp_path):
+    path = tmp_path / "profiles.json"
+    path.write_text('[{"name": "Old", "destination": "/tmp/old", "removed_field": true}]')
+
+    loaded = load_profiles(path)
+
+    assert len(loaded) == 1
+    assert loaded[0].name == "Default"
+
+
+def test_save_profiles_leaves_no_temp_files_behind(tmp_path):
+    path = tmp_path / "profiles.json"
+
+    save_profiles(path, [Profile(name="Documents", destination="/tmp/docs")])
+
+    assert [p.name for p in tmp_path.iterdir()] == ["profiles.json"]
+
+
 def test_replace_profile_updates_the_matching_entry_by_name():
     existing = [
         Profile(name="Documents", destination="/tmp/docs"),
