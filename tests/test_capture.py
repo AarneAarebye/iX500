@@ -53,6 +53,16 @@ def test_capture_pages_raises_multi_feed_error_with_partial_pages():
     assert len(err.pages_captured) == 2
 
 
+def test_capture_pages_drops_incomplete_trailing_front_frame():
+    # 3 frames: one complete sheet, then a front whose back never arrives.
+    frames = [_img("f1"), _img("b1"), _img("f2")]
+    device = FakeSaneDevice(frames)
+
+    pages = capture_pages(device)
+
+    assert pages == [PagePair(frames[0], frames[1])]
+
+
 def test_capture_pages_raises_when_adf_is_empty():
     device = FakeSaneDevice(frames=[])
 
