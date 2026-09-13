@@ -7,6 +7,7 @@ from pathlib import Path
 import rumps
 from AppKit import NSOpenPanel
 from Foundation import NSURL
+from PyObjCTools import AppHelper
 
 from scanix500.menubar.profiles import (
     Profile,
@@ -73,13 +74,17 @@ class ScanixMenuBarApp(rumps.App):
         return handler
 
     def _run_scan_thread(self, profile: Profile):
-        result = run_scan(profile)
-
-        def deliver(timer):
-            timer.stop()
-            self._on_scan_complete(result)
-
-        rumps.Timer(deliver, 0.1).start()
+        # Any exception here would kill this thread silently and strand
+        # _scanning=True forever, so convert every failure into a ScanResult.
+        try:
+            result = run_scan(profile)
+        except Exception as e:  # noqa: BLE001 - must never wedge the app
+            result = ScanResult(ok=False, partial=False, message=str(e), output_paths=[])
+        # rumps.Timer.start() schedules onto NSRunLoop.currentRunLoop(), which
+        # from this worker thread is a run loop nothing ever runs — the
+        # callback would never fire. AppHelper.callAfter marshals onto the
+        # main thread's run loop from any thread.
+        AppHelper.callAfter(self._on_scan_complete, result)
 
     def _on_scan_complete(self, result: ScanResult):
         self._scanning = False
