@@ -36,6 +36,9 @@ def main(argv: list[str] | None = None) -> int:
             f"processing {len(e.pages_captured)} pages captured before the jam.",
             file=sys.stderr,
         )
+        # Intentional fall-through (not an early return): the pages captured
+        # before the jam must still be filtered, built and routed by the shared
+        # code below. Only the exit code differs from the success path.
         pages = e.pages_captured
         exit_code = 1
     else:
@@ -48,9 +51,21 @@ def main(argv: list[str] | None = None) -> int:
     else:
         partitions = filter_pages(pages, split_on_blank=args.split_on_blank)
 
+    if not partitions:
+        print("All pages were blank; no PDF written.")
+        return exit_code
+
     output_paths = compute_output_paths(args.destination, len(partitions))
-    for images, path in zip(partitions, output_paths):
-        build_pdf(images, path, ocr=not args.skip_ocr)
-        print(path)
+    try:
+        args.destination.mkdir(parents=True, exist_ok=True)
+        for images, path in zip(partitions, output_paths):
+            build_pdf(images, path, ocr=not args.skip_ocr)
+            print(path)
+    except OSError as e:
+        print(
+            f"Failed to write output to {args.destination}: {e}",
+            file=sys.stderr,
+        )
+        return 1
 
     return exit_code
