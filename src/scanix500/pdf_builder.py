@@ -21,6 +21,20 @@ def _merge_pdfs(page_paths: list[Path], output_path: Path) -> None:
         writer.write(f)
 
 
+def _ocr_single_page(input_path: Path) -> Path:
+    output_path = input_path.with_suffix(".ocr.pdf")
+    try:
+        subprocess.run(
+            ["ocrmypdf", str(input_path), str(output_path)],
+            check=True,
+            capture_output=True,
+        )
+        return output_path
+    except subprocess.CalledProcessError:
+        logger.warning("OCR failed for %s; including as image-only", input_path)
+        return input_path
+
+
 def build_pdf(images: list[Image.Image], output_path: Path, *, ocr: bool = True) -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_dir_path = Path(tmp_dir)
@@ -28,5 +42,5 @@ def build_pdf(images: list[Image.Image], output_path: Path, *, ocr: bool = True)
         for i, image in enumerate(images):
             page_path = tmp_dir_path / f"page_{i}.pdf"
             _save_image_only_pdf(image, page_path)
-            page_paths.append(page_path)
+            page_paths.append(_ocr_single_page(page_path) if ocr else page_path)
         _merge_pdfs(page_paths, output_path)
