@@ -9,7 +9,9 @@ from AppKit import NSOpenPanel
 from Foundation import NSURL
 from PyObjCTools import AppHelper
 
+from scanix500.menubar.button_watcher import button_pressed, resolve_device_name
 from scanix500.menubar.profiles import (
+    HARDWARE_BUTTON_PROFILE_NAME,
     Profile,
     add_profile,
     default_profiles_path,
@@ -48,6 +50,9 @@ class ScanixMenuBarApp(rumps.App):
         # See _rebuild_menu's comment on self._app_started.
         self._app_started = False
         self._rebuild_menu()
+        self._button_device_name: str | None = None
+        self._button_timer = rumps.Timer(self._poll_button, 1.5)
+        self._button_timer.start()
 
     def _rebuild_menu(self):
         self.menu.clear()
@@ -86,14 +91,29 @@ class ScanixMenuBarApp(rumps.App):
             self.menu.add(self.quit_button)
         self._app_started = True
 
+    def _start_scan(self, profile: Profile) -> None:
+        if self._scanning:
+            return
+        self._scanning = True
+        self.title = SCANNING_TITLE
+        threading.Thread(target=self._run_scan_thread, args=(profile,), daemon=True).start()
+
     def _make_scan_handler(self, profile: Profile):
         def handler(_sender):
-            if self._scanning:
-                return
-            self._scanning = True
-            self.title = SCANNING_TITLE
-            threading.Thread(target=self._run_scan_thread, args=(profile,), daemon=True).start()
+            self._start_scan(profile)
         return handler
+
+    def _poll_button(self, _sender):
+        if self._button_device_name is None:
+            self._button_device_name = resolve_device_name()
+        if self._button_device_name is None:
+            return
+        if not button_pressed(self._button_device_name):
+            return
+        for profile in self.profiles:
+            if profile.name == HARDWARE_BUTTON_PROFILE_NAME:
+                self._start_scan(profile)
+                return
 
     def _run_scan_thread(self, profile: Profile):
         # Any exception here would kill this thread silently and strand
