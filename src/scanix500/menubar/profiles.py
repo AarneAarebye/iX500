@@ -37,3 +37,7 @@ def load_profiles(path: Path) -> list[Profile]:
 def save_profiles(path: Path, profiles: list[Profile]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps([asdict(p) for p in profiles], indent=2))
+
+
+def add_profile(profiles: list[Profile], profile: Profile) -> list[Profile]:
+    return [*profiles, profile]
