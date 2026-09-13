@@ -51,3 +51,10 @@ def test_capture_pages_raises_multi_feed_error_with_partial_pages():
     err = exc_info.value
     assert err.sheet_index == 2
     assert len(err.pages_captured) == 2
+
+
+def test_capture_pages_raises_when_adf_is_empty():
+    device = FakeSaneDevice(frames=[])
+
+    with pytest.raises(NoPagesScannedError):
+        capture_pages(device)
