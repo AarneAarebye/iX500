@@ -94,22 +94,35 @@ Run these by hand against the real iX500 after any change to `capture.py` or
       gets real data instead of always falling back to its 200 DPI default.
       Re-verified after the fix: a 600 DPI real scan produced an
       8.49x11.00in page.
-- [ ] **Open design gap found 2026-09-13, not yet fixed:** this backend/unit
-      exposes NO queryable "double-feed detected" sensor option at all —
-      `scanimage --help -d <device>`'s `Sensors:` section is empty. Double
-      feed is only configurable via `--df-action`/`--df-skew`/
-      `--df-thickness`/`--df-length` (all `[inactive]` by default, meaning
-      double-feed detection isn't even enabled), which almost certainly
-      means a real double feed surfaces as a `sane.error` raised during
-      `read_frame()`, not as a pollable attribute. `PySaneDevice.
-      multi_feed_detected()` currently polls `self._dev.double_feed_detected`
-      and fails open (`except AttributeError: return False`) — against this
-      real hardware, that attribute never exists, so **multi-feed detection
-      currently cannot work at all on this unit** as designed. This needs a
-      redesign (catching a specific exception from `read_frame()` instead of
-      polling a status attribute) before it can be trusted — deliberately
-      testing an actual double feed hasn't been done yet pending that design
-      work.
+- [x] Multi-feed detection redesigned 2026-09-13 based on real-hardware
+      investigation. Findings:
+      - The correct sensor is `omr_df` ("OMR or double feed detected"), not
+        `double_feed_detected` as originally guessed — confirmed via
+        `sane.get_options()` and `scanimage -A -d <device>` (it's hidden from
+        plain `scanimage --help`). `multi_feed_detected()` now polls this.
+      - Detection is OFF by default and must be explicitly enabled.
+        `df-thickness`/`df-skew` start `SANE_CAP_INACTIVE` until `df-action`
+        is set to a non-default value — confirmed by reading back capability
+        flags before/after. `PySaneDevice.__init__` now sets
+        `df_action="Stop"`, `df_thickness=True`, `df_skew=True`.
+        `df-length` is deliberately left disabled (would false-positive on
+        any page shorter than a full sheet, e.g. receipts).
+      - The compiled backend contains the string `"Document feeder jammed"`
+        (the standard `SANE_STATUS_JAMMED` message) alongside double-feed
+        debug strings, strongly suggesting a real double-feed can abort the
+        read itself (raising an exception) rather than only setting a flag
+        afterward. `capture_pages()` now catches any non-`StopIteration`
+        exception from `read_frame()` and converts it to `MultiFeedError`
+        with pages captured so far preserved, instead of crashing uncaught.
+      - **Still unconfirmed:** three deliberate attempts to trigger a real
+        double-feed (stacked sheets face-to-face, offset/angled, and a
+        folded sheet fed folded-edge-first) all failed — the ADF's
+        separation mechanism successfully peeled every attempt apart
+        cleanly, `omr_df` never moved, no exception was raised. Re-verified
+        a normal scan afterward still works correctly with detection
+        enabled (no false positives). The exact trigger conditions and
+        failure signature remain to be observed from a real accidental
+        double-feed during normal use — update this note when one occurs.
 - [ ] Resulting PDF text is selectable/searchable (OCR ran) unless
       `--skip-ocr` was passed.
 - [ ] Open the resulting PDF and check its physical page size (Preview's

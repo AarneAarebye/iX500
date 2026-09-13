@@ -32,6 +32,13 @@ def capture_pages(device: SaneDevice) -> list[PagePair]:
             front = device.read_frame()
         except StopIteration:
             break
+        except Exception:
+            # A read failed abnormally mid-batch (e.g. a real jam or a
+            # double-feed that aborts the read itself rather than merely
+            # setting a flag afterward — confirmed possible on real hardware:
+            # the fujitsu backend can return SANE_STATUS_JAMMED from a read).
+            # Never let this crash out uncaught and lose partial work.
+            raise MultiFeedError(sheet_index, pages)
         try:
             back = device.read_frame()
         except StopIteration:
@@ -39,6 +46,8 @@ def capture_pages(device: SaneDevice) -> list[PagePair]:
             # never did, so the pair can't be completed. Treat it as
             # end-of-batch and keep every complete pair captured so far.
             break
+        except Exception:
+            raise MultiFeedError(sheet_index, pages)
         sheet_index += 1
         pages.append(PagePair(front, back))
         if device.multi_feed_detected():
@@ -94,6 +103,20 @@ class PySaneDevice:
         # to match — confirmed against real hardware, no separate call needed.
         self._dev.page_width = A4_WIDTH_MM
         self._dev.page_height = A4_HEIGHT_MM
+
+        # Double-feed detection is OFF by default on this hardware and must
+        # be explicitly enabled — confirmed against a real iX500. df-action
+        # must be set before df-thickness/df-skew become selectable (they
+        # start SANE_CAP_INACTIVE until a df-action value is chosen).
+        # df-length is deliberately left disabled: it flags any fed sheet
+        # whose length differs from page_height by more than df-diff's
+        # threshold, which would false-positive on anything shorter than a
+        # full page (receipts, business cards) — thickness/skew don't have
+        # that failure mode.
+        self._dev.df_action = "Stop"
+        self._dev.df_thickness = True
+        self._dev.df_skew = True
+
         self._frames = None
 
     def start(self) -> None:
@@ -115,7 +138,17 @@ class PySaneDevice:
         return frame
 
     def multi_feed_detected(self) -> bool:
+        # `omr_df` ("OMR or double feed detected") is the real, live sensor
+        # option on this hardware/backend — confirmed via `sane.get_options()`
+        # and `scanimage -A`; it's hidden from `scanimage --help`'s default
+        # (non-`-A`) output and was NOT named `double_feed_detected` as
+        # originally guessed. Deliberate double-feed attempts (stacked sheets,
+        # a folded sheet) did not trigger it in testing — the ADF's separation
+        # rollers kept peeling sheets apart cleanly — so this remains
+        # unconfirmed by an actual live trigger; the attribute name and
+        # activation sequence (df_action="Stop" + df_thickness/df_skew=True
+        # in __init__) are confirmed correct against real hardware.
         try:
-            return bool(self._dev.double_feed_detected)
+            return bool(self._dev.omr_df)
         except AttributeError:
             return False

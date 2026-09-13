@@ -12,9 +12,11 @@ def _img(tag):
 
 
 class FakeSaneDevice:
-    def __init__(self, frames, multi_feed_after_sheet=None):
+    def __init__(self, frames, multi_feed_after_sheet=None, fail_at_frame=None):
         self._frames = iter(frames)
         self._multi_feed_after_sheet = multi_feed_after_sheet
+        self._fail_at_frame = fail_at_frame
+        self._frames_read = 0
         self._sheets_seen = 0
         self.started = False
 
@@ -22,6 +24,9 @@ class FakeSaneDevice:
         self.started = True
 
     def read_frame(self):
+        self._frames_read += 1
+        if self._frames_read == self._fail_at_frame:
+            raise RuntimeError("simulated read-time hardware fault")
         return next(self._frames)
 
     def multi_feed_detected(self):
@@ -68,3 +73,18 @@ def test_capture_pages_raises_when_adf_is_empty():
 
     with pytest.raises(NoPagesScannedError):
         capture_pages(device)
+
+
+def test_capture_pages_converts_read_failure_to_multi_feed_error():
+    # Sheet 1 completes normally; sheet 2's front frame raises a hardware
+    # fault (e.g. a real jam/double-feed aborting the read itself, not just
+    # setting a flag afterward). Sheet 1 must still be preserved.
+    frames = [_img("f1"), _img("b1"), _img("f2"), _img("b2")]
+    device = FakeSaneDevice(frames, fail_at_frame=3)
+
+    with pytest.raises(MultiFeedError) as exc_info:
+        capture_pages(device)
+
+    err = exc_info.value
+    assert err.sheet_index == 1
+    assert err.pages_captured == [PagePair(frames[0], frames[1])]
