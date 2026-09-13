@@ -1,7 +1,7 @@
 import pytest
 from PIL import Image
 
-from scanix500.capture import PagePair, capture_pages
+from scanix500.capture import PagePair, capture_pages, find_fujitsu_device
 from scanix500.errors import MultiFeedError, NoPagesScannedError
 
 
@@ -88,3 +88,12 @@ def test_capture_pages_converts_read_failure_to_multi_feed_error():
     err = exc_info.value
     assert err.sheet_index == 1
     assert err.pages_captured == [PagePair(frames[0], frames[1])]
+
+
+def test_find_fujitsu_device_matches_by_vendor():
+    devices = [
+        ("epson:net:1.2.3.4", "EPSON", "Perfection V600", "scanner"),
+        ("fujitsu:ScanSnap iX500:1203900", "FUJITSU", "ScanSnap iX500", "scanner"),
+    ]
+
+    assert find_fujitsu_device(devices) == "fujitsu:ScanSnap iX500:1203900"

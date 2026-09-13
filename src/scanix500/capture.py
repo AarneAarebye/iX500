@@ -24,6 +24,16 @@ A4_WIDTH_MM = 210
 A4_HEIGHT_MM = 297
 
 
+def find_fujitsu_device(devices: list[tuple]) -> str | None:
+    """Given the (name, vendor, model, type) tuples sane.get_devices()
+    returns, finds the iX500 and returns its device name, or None if
+    not found."""
+    for d in devices:
+        if "fujitsu" in d[1].lower() or "ix500" in d[2].lower():
+            return d[0]
+    return None
+
+
 def capture_pages(device: SaneDevice) -> list[PagePair]:
     device.start()
     pages: list[PagePair] = []
@@ -85,16 +95,12 @@ class PySaneDevice:
         except Exception as e:
             raise ScannerNotFoundError(f"Failed to enumerate SANE devices: {e}") from e
 
-        # get_devices() yields (name, vendor, model, type) tuples: d[1] is the
-        # vendor ("FUJITSU"), d[2] the model ("ScanSnap iX500").
-        fujitsu_devices = [
-            d for d in devices if "fujitsu" in d[1].lower() or "ix500" in d[2].lower()
-        ]
-        if not fujitsu_devices:
+        device_name = find_fujitsu_device(devices)
+        if device_name is None:
             raise ScannerNotFoundError("No iX500 found via SANE fujitsu backend")
 
         try:
-            self._dev = sane.open(fujitsu_devices[0][0])
+            self._dev = sane.open(device_name)
         except Exception as e:
             raise ScannerNotFoundError(f"Failed to open SANE device: {e}") from e
 
