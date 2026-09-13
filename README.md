@@ -108,7 +108,17 @@ single "Default" profile on first run.
 1. Find the installed script's full path: `which scanix500-menubar`
 2. Copy `packaging/com.scanix500.menubar.plist` to `~/Library/LaunchAgents/`
 3. Edit the copied plist's `ProgramArguments` entry to the path from step 1
-4. `launchctl load ~/Library/LaunchAgents/com.scanix500.menubar.plist`
+4. Edit the copied plist's `EnvironmentVariables` → `PATH` value so its first
+   entry is the same venv `bin/` directory used in `ProgramArguments` (e.g.
+   `/path/to/your/venv/bin:/usr/bin:/bin`). launchd otherwise starts the app
+   with a minimal `PATH` that doesn't include the venv, so the `scanix500`
+   CLI can't be found. (`runner.py` also resolves `scanix500` next to the
+   running interpreter, so this is defense in depth.)
+5. `launchctl load ~/Library/LaunchAgents/com.scanix500.menubar.plist`
+
+If the menu bar icon doesn't appear after logging in, check
+`/tmp/scanix500-menubar.log` (the plist's `StandardOutPath`/`StandardErrorPath`)
+for errors.
 
 To stop it from auto-launching: `launchctl unload ~/Library/LaunchAgents/com.scanix500.menubar.plist`
 then remove the plist file.
@@ -118,6 +128,9 @@ then remove the plist file.
 Run these by hand — `app.py` has no automated tests, since it's live
 GUI/AppKit code:
 
+- [ ] The first notification may require approving Python/the app in
+      System Settings → Notifications — macOS attributes notifications from
+      this venv's interpreter to "Python" the first time.
 - [ ] Clicking a profile in the menu triggers a scan; the icon changes
       to the "scanning" state and reverts when done.
 - [ ] A successful scan shows a "Scan complete" notification naming the
@@ -137,5 +150,9 @@ GUI/AppKit code:
       failing or leaving an empty menu.
 - [ ] Clicking a profile, or Add/Edit/Delete, while a scan is already in
       progress does nothing (no double-scan, no crash).
+- [ ] Adding a profile whose name already exists is refused with a clear
+      alert instead of creating a duplicate menu row.
+- [ ] After adding/editing/deleting a profile, the menu still has a working
+      Quit item (the menu is rebuilt from scratch on each change).
 - [ ] Quit and relaunch `scanix500-menubar`: profiles persist correctly
       from `profiles.json`.

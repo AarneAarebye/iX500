@@ -8,6 +8,11 @@
     <array>
         <string>/path/to/your/venv/bin/scanix500-menubar</string>
     </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/path/to/your/venv/bin:/usr/bin:/bin</string>
+    </dict>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
