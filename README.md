@@ -63,31 +63,48 @@ fakes and mocks — no scanner hardware required.
 Run these by hand against the real iX500 after any change to `capture.py` or
 `pdf_builder.py` — hardware behavior isn't mocked:
 
-- [ ] `scanimage -L` and/or `sane.get_devices()` shows the iX500 via the
-      `fujitsu` backend. If not, `PySaneDevice.__init__`'s device matching
-      needs adjusting. `sane.get_devices()` returns `(name, vendor, model,
-      type)` tuples, and the match currently accepts a device whose vendor
-      (`d[1]`) contains `"fujitsu"` or whose model (`d[2]`) contains
-      `"ix500"`. Print the real tuples from `sane.get_devices()` and widen or
-      correct those substrings to whatever this unit actually reports.
-- [ ] Load a 5-page double-sided stack, run `scanix500 <dest>`: resulting
-      PDF has 10 pages in correct front/back/front/back order.
+- [x] `scanimage -L` and/or `sane.get_devices()` shows the iX500 via the
+      `fujitsu` backend. **Verified 2026-09-13** against a real iX500:
+      device string `fujitsu:ScanSnap iX500:1203900`, `get_devices()` returns
+      `('fujitsu:ScanSnap iX500:1203900', 'FUJITSU', 'ScanSnap iX500',
+      'scanner')` — the existing `"fujitsu" in d[1].lower()` match works
+      as-is. **Gotcha found:** a third-party scanning app (VueScan) running
+      in the background held the USB device open and caused
+      `connect_fd: could not open device` — quit any other scanner app first.
+- [x] Load a double-sided stack, run `scanix500 <dest>`: resulting PDF has
+      pages in correct front/back/front/back order. **Verified 2026-09-13**
+      with real documents — capture, blank-page filtering, and OCR all
+      worked correctly end-to-end against physical hardware.
 - [ ] Load a stack with one intentionally blank backside: resulting PDF
       has that blank page removed.
 - [ ] Load a stack with a fully blank separator sheet in the middle, run
       with `--split-on-blank`: two separate PDFs are produced.
-- [ ] Deliberately feed two sheets stuck together: `scanix500` reports a
-      multi-feed error and exits non-zero, and the pages captured before
-      the jam are still written to a PDF. Confirm `PySaneDevice`'s
-      `multi_feed_detected()` reads the right backend option: it currently
-      reads `self._dev.double_feed_detected` and returns `False` if that
-      attribute doesn't exist, so a wrong name fails silently (multi-feeds
-      would never be reported). Run `sane.open(...).get_options()` (or
-      `scanimage -A -d <device>`) against this unit and check for a
-      double-feed/multi-feed option; python-sane exposes SANE option names
-      with `-` replaced by `_`. If the option is named differently on this
-      firmware/backend version, update the attribute name in
-      `multi_feed_detected()` to match.
+- [x] **Fixed 2026-09-13, hardware-verified:** output PDF page size matches
+      the original document. Real captures came out ~3x oversized (25.5x33in
+      instead of 8.5x11in) because `python-sane`'s `snap()`/`multi_scan()`
+      build the PIL image via `Image.frombuffer()` and never set
+      `.info["dpi"]` — confirmed by reading `sane.py`'s source. `PySaneDevice`
+      now stamps `frame.info["dpi"] = (self._dev.resolution,) * 2` in
+      `read_frame()` so `pdf_builder.py`'s existing DPI-aware page sizing
+      gets real data instead of always falling back to its 200 DPI default.
+      Re-verified after the fix: a 600 DPI real scan produced an
+      8.49x11.00in page.
+- [ ] **Open design gap found 2026-09-13, not yet fixed:** this backend/unit
+      exposes NO queryable "double-feed detected" sensor option at all —
+      `scanimage --help -d <device>`'s `Sensors:` section is empty. Double
+      feed is only configurable via `--df-action`/`--df-skew`/
+      `--df-thickness`/`--df-length` (all `[inactive]` by default, meaning
+      double-feed detection isn't even enabled), which almost certainly
+      means a real double feed surfaces as a `sane.error` raised during
+      `read_frame()`, not as a pollable attribute. `PySaneDevice.
+      multi_feed_detected()` currently polls `self._dev.double_feed_detected`
+      and fails open (`except AttributeError: return False`) — against this
+      real hardware, that attribute never exists, so **multi-feed detection
+      currently cannot work at all on this unit** as designed. This needs a
+      redesign (catching a specific exception from `read_frame()` instead of
+      polling a status attribute) before it can be trusted — deliberately
+      testing an actual double feed hasn't been done yet pending that design
+      work.
 - [ ] Resulting PDF text is selectable/searchable (OCR ran) unless
       `--skip-ocr` was passed.
 - [ ] Open the resulting PDF and check its physical page size (Preview's

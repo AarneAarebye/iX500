@@ -92,7 +92,17 @@ class PySaneDevice:
         self._frames = self._dev.multi_scan()
 
     def read_frame(self):
-        return next(self._frames)
+        # python-sane's snap()/multi_scan() build the PIL image via
+        # Image.frombuffer() and never set .info["dpi"] — confirmed by
+        # reading its source. pdf_builder.py relies on that field for
+        # correct PDF page geometry, so stamp the real capture resolution
+        # onto every frame here; otherwise every real scan silently falls
+        # back to pdf_builder's 200 DPI default regardless of the actual
+        # resolution used (verified against real hardware: default 600 DPI
+        # scans came out with pages sized for 200 DPI, ~3x oversized).
+        frame = next(self._frames)
+        frame.info["dpi"] = (self._dev.resolution, self._dev.resolution)
+        return frame
 
     def multi_feed_detected(self) -> bool:
         try:
