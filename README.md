@@ -75,6 +75,11 @@ Run these by hand against the real iX500 after any change to `capture.py` or
       pages in correct front/back/front/back order. **Verified 2026-09-13**
       with real documents — capture, blank-page filtering, and OCR all
       worked correctly end-to-end against physical hardware.
+- [x] Default scan settings are A4 @ 300 DPI. **Verified 2026-09-13**:
+      `PySaneDevice` sets `resolution=300`, `page_width=210`,
+      `page_height=297` (mm) — confirmed setting `page_width`/`page_height`
+      auto-syncs the scan area (`br_x`/`br_y`) on real hardware, and a real
+      scan produced a PDF page at exactly 210.0x297.0mm.
 - [ ] Load a stack with one intentionally blank backside: resulting PDF
       has that blank page removed.
 - [ ] Load a stack with a fully blank separator sheet in the middle, run

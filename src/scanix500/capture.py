@@ -18,6 +18,11 @@ class SaneDevice(Protocol):
     def multi_feed_detected(self) -> bool: ...
 
 
+DEFAULT_RESOLUTION_DPI = 300
+A4_WIDTH_MM = 210
+A4_HEIGHT_MM = 297
+
+
 def capture_pages(device: SaneDevice) -> list[PagePair]:
     device.start()
     pages: list[PagePair] = []
@@ -84,6 +89,11 @@ class PySaneDevice:
             raise ScannerNotFoundError(f"Failed to open SANE device: {e}") from e
 
         self._dev.source = "ADF Duplex"
+        self._dev.resolution = DEFAULT_RESOLUTION_DPI
+        # Setting page_width/page_height also syncs the scan-area (br_x/br_y)
+        # to match — confirmed against real hardware, no separate call needed.
+        self._dev.page_width = A4_WIDTH_MM
+        self._dev.page_height = A4_HEIGHT_MM
         self._frames = None
 
     def start(self) -> None:
