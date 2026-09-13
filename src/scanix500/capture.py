@@ -21,13 +21,17 @@ class SaneDevice(Protocol):
 def capture_pages(device: SaneDevice) -> list[PagePair]:
     device.start()
     pages: list[PagePair] = []
+    sheet_index = 0
     while True:
         try:
             front = device.read_frame()
         except StopIteration:
             break
         back = device.read_frame()
+        sheet_index += 1
         pages.append(PagePair(front, back))
+        if device.multi_feed_detected():
+            raise MultiFeedError(sheet_index, pages)
 
     if not pages:
         raise NoPagesScannedError()
