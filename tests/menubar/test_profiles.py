@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from scanix500.menubar.profiles import (
     Profile,
     add_profile,
@@ -52,3 +54,10 @@ def test_replace_profile_updates_the_matching_entry_by_name():
     result = replace_profile(existing, "Documents", updated)
 
     assert result == [updated, existing[1]]
+
+
+def test_replace_profile_raises_for_unknown_name():
+    existing = [Profile(name="Documents", destination="/tmp/docs")]
+
+    with pytest.raises(ValueError):
+        replace_profile(existing, "NoSuchProfile", Profile(name="X", destination="/tmp/x"))
