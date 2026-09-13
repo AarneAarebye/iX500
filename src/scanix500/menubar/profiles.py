@@ -47,3 +47,11 @@ def replace_profile(profiles: list[Profile], name: str, updated: Profile) -> lis
     if not any(p.name == name for p in profiles):
         raise ValueError(f"No profile named {name!r}")
     return [updated if p.name == name else p for p in profiles]
+
+
+def delete_profile(profiles: list[Profile], name: str) -> list[Profile]:
+    if not any(p.name == name for p in profiles):
+        raise ValueError(f"No profile named {name!r}")
+    if len(profiles) == 1:
+        raise ValueError("Cannot delete the last remaining profile")
+    return [p for p in profiles if p.name != name]

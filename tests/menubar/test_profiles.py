@@ -5,6 +5,7 @@ import pytest
 from scanix500.menubar.profiles import (
     Profile,
     add_profile,
+    delete_profile,
     load_profiles,
     replace_profile,
     save_profiles,
@@ -61,3 +62,14 @@ def test_replace_profile_raises_for_unknown_name():
 
     with pytest.raises(ValueError):
         replace_profile(existing, "NoSuchProfile", Profile(name="X", destination="/tmp/x"))
+
+
+def test_delete_profile_removes_the_matching_entry_by_name():
+    existing = [
+        Profile(name="Documents", destination="/tmp/docs"),
+        Profile(name="Receipts", destination="/tmp/receipts"),
+    ]
+
+    result = delete_profile(existing, "Documents")
+
+    assert result == [existing[1]]
