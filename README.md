@@ -80,6 +80,13 @@ Run these by hand against the real iX500 after any change to `capture.py` or
       `page_height=297` (mm) — confirmed setting `page_width`/`page_height`
       auto-syncs the scan area (`br_x`/`br_y`) on real hardware, and a real
       scan produced a PDF page at exactly 210.0x297.0mm.
+- [x] **Fixed 2026-09-13, hardware-verified:** scans come out in color, not
+      black & white. `PySaneDevice` never set the `mode` option, so it
+      silently used the backend's own default — confirmed to be `Lineart`
+      (pure 1-bit black & white, not even grayscale) via
+      `scanimage --help -d <device>`. Now explicitly sets `mode="Color"`.
+      Re-verified with a real double-sided color document: output pages
+      came out in full color.
 - [ ] Load a stack with one intentionally blank backside: resulting PDF
       has that blank page removed.
 - [ ] Load a stack with a fully blank separator sheet in the middle, run

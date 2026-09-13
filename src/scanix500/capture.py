@@ -19,6 +19,7 @@ class SaneDevice(Protocol):
 
 
 DEFAULT_RESOLUTION_DPI = 300
+DEFAULT_MODE = "Color"
 A4_WIDTH_MM = 210
 A4_HEIGHT_MM = 297
 
@@ -99,6 +100,11 @@ class PySaneDevice:
 
         self._dev.source = "ADF Duplex"
         self._dev.resolution = DEFAULT_RESOLUTION_DPI
+        # The backend's own default is "Lineart" (pure 1-bit black & white,
+        # not even grayscale) — confirmed against real hardware: an unset
+        # mode silently produced stark B&W output. "Color" matches what a
+        # general-purpose document scanner should default to.
+        self._dev.mode = DEFAULT_MODE
         # Setting page_width/page_height also syncs the scan-area (br_x/br_y)
         # to match — confirmed against real hardware, no separate call needed.
         self._dev.page_width = A4_WIDTH_MM
