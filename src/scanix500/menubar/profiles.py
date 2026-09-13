@@ -38,7 +38,7 @@ def _hardware_button_profile() -> Profile:
 
 
 def _seed_default(path: Path) -> list[Profile]:
-    seeded = [_default_profile()]
+    seeded = [_default_profile(), _hardware_button_profile()]
     save_profiles(path, seeded)
     return seeded
 

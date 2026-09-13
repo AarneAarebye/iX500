@@ -32,9 +32,8 @@ def test_load_profiles_seeds_default_when_file_missing(tmp_path):
 
     loaded = load_profiles(path)
 
-    assert len(loaded) == 1
-    assert loaded[0].name == "Default"
-    assert path.exists()  # the seeded default was persisted
+    assert [p.name for p in loaded] == ["Default", HARDWARE_BUTTON_PROFILE_NAME]
+    assert path.exists()  # the seeded profiles were persisted
 
 
 def test_add_profile_appends_to_the_list():
@@ -82,9 +81,8 @@ def test_load_profiles_falls_back_to_default_when_file_is_corrupt(tmp_path):
 
     loaded = load_profiles(path)
 
-    assert len(loaded) == 1
-    assert loaded[0].name == "Default"
-    assert load_profiles(path) == loaded  # the recovered default was persisted
+    assert [p.name for p in loaded] == ["Default", HARDWARE_BUTTON_PROFILE_NAME]
+    assert [p.name for p in load_profiles(path)] == ["Default", HARDWARE_BUTTON_PROFILE_NAME]
 
 
 def test_load_profiles_falls_back_to_default_on_unknown_field(tmp_path):
@@ -93,8 +91,7 @@ def test_load_profiles_falls_back_to_default_on_unknown_field(tmp_path):
 
     loaded = load_profiles(path)
 
-    assert len(loaded) == 1
-    assert loaded[0].name == "Default"
+    assert [p.name for p in loaded] == ["Default", HARDWARE_BUTTON_PROFILE_NAME]
 
 
 def test_save_profiles_leaves_no_temp_files_behind(tmp_path):
