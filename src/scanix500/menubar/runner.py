@@ -1,0 +1,46 @@
+from __future__ import annotations
+
+import subprocess
+from dataclasses import dataclass
+
+from scanix500.menubar.profiles import Profile
+
+_KNOWN_MESSAGES = {"No pages scanned.", "All pages were blank; no PDF written."}
+
+
+@dataclass
+class ScanResult:
+    ok: bool
+    partial: bool
+    message: str
+    output_paths: list[str]
+
+
+def parse_scan_output(returncode: int, stdout: str, stderr: str) -> ScanResult:
+    stdout_lines = [line for line in stdout.splitlines() if line]
+    message_line = stdout_lines[0] if stdout_lines and stdout_lines[0] in _KNOWN_MESSAGES else None
+    output_paths = [] if message_line else stdout_lines
+
+    if returncode == 0:
+        return ScanResult(
+            ok=True,
+            partial=False,
+            message=message_line or "Scan complete",
+            output_paths=output_paths,
+        )
+
+    stderr_lines = [line for line in stderr.splitlines() if line]
+    multi_feed = any("Multi-feed detected" in line for line in stderr_lines)
+
+    if multi_feed:
+        stderr_message = stderr_lines[0] if stderr_lines else "Multi-feed detected"
+        if output_paths:
+            message = f"{stderr_message} — partial scan saved to {output_paths[0]}"
+        elif message_line:
+            message = f"{stderr_message} ({message_line})"
+        else:
+            message = stderr_message
+        return ScanResult(ok=False, partial=True, message=message, output_paths=output_paths)
+
+    message = stderr_lines[0] if stderr_lines else f"scanix500 exited with code {returncode}"
+    return ScanResult(ok=False, partial=False, message=message, output_paths=[])
