@@ -2,6 +2,7 @@ from pathlib import Path
 from unittest.mock import patch
 import subprocess as subprocess_module
 
+import pytest
 from PIL import Image
 from pypdf import PdfReader
 
@@ -52,3 +53,31 @@ def test_build_pdf_falls_back_to_image_only_when_ocr_fails(tmp_path):
 
     reader = PdfReader(str(output_path))
     assert len(reader.pages) == 1
+
+
+def test_build_pdf_falls_back_when_ocrmypdf_binary_is_missing(tmp_path):
+    images = [_content_image()]
+    output_path = tmp_path / "out.pdf"
+
+    def missing_binary_run(cmd, check, capture_output):
+        raise FileNotFoundError(2, "No such file or directory", "ocrmypdf")
+
+    with patch("scanix500.pdf_builder.subprocess.run", side_effect=missing_binary_run):
+        build_pdf(images, output_path, ocr=True)  # must not raise
+
+    reader = PdfReader(str(output_path))
+    assert len(reader.pages) == 1
+
+
+def test_build_pdf_uses_image_dpi_for_page_geometry(tmp_path):
+    image = Image.new("RGB", (100, 100), color=(255, 0, 0))
+    image.info["dpi"] = (300, 300)
+    output_path = tmp_path / "out.pdf"
+
+    build_pdf([image], output_path, ocr=False)
+
+    reader = PdfReader(str(output_path))
+    mediabox = reader.pages[0].mediabox
+    # 100px at 300 DPI = 1/3 inch = 24pt, not the 100pt a 72-DPI default gives.
+    assert float(mediabox.width) == pytest.approx(24.0, abs=0.5)
+    assert float(mediabox.height) == pytest.approx(24.0, abs=0.5)
