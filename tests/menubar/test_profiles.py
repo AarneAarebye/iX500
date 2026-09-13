@@ -14,3 +14,13 @@ def test_save_and_load_round_trip(tmp_path):
     loaded = load_profiles(path)
 
     assert loaded == profiles
+
+
+def test_load_profiles_seeds_default_when_file_missing(tmp_path):
+    path = tmp_path / "does-not-exist" / "profiles.json"
+
+    loaded = load_profiles(path)
+
+    assert len(loaded) == 1
+    assert loaded[0].name == "Default"
+    assert path.exists()  # the seeded default was persisted
