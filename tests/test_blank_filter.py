@@ -21,3 +21,19 @@ def test_is_blank_true_for_all_white_image():
 
 def test_is_blank_false_for_image_with_content():
     assert is_blank(_content_image()) is False
+
+
+def test_filter_pages_drops_blank_backside_keeps_front():
+    pages = [PagePair(_content_image(), _blank_image())]
+
+    partitions = filter_pages(pages)
+
+    assert partitions == [[pages[0].front]]
+
+
+def test_filter_pages_keeps_both_sides_when_neither_blank():
+    pages = [PagePair(_content_image(), _content_image())]
+
+    partitions = filter_pages(pages)
+
+    assert partitions == [[pages[0].front, pages[0].back]]
