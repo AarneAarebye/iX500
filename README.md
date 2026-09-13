@@ -182,6 +182,20 @@ then remove the plist file.
 Run these by hand — `app.py` has no automated tests, since it's live
 GUI/AppKit code:
 
+- [x] **Fixed 2026-09-13, hardware-verified:** the app crashed on every
+      single launch with `NSInternalInconsistencyException - Item to be
+      inserted into menu already is in another menu`. `_rebuild_menu()`
+      (called from `__init__`) re-added `self.quit_button` before rumps'
+      own `initializeStatusBar()` (which runs later, at the end of
+      `App.run()`) had ever added it itself — the same `NSMenuItem`
+      object can't belong to two menus, and Cocoa raised on the second
+      add even though rumps' own title-keyed dict logic would have
+      silently ignored the "duplicate." Fixed by only re-adding
+      `quit_button` on rebuilds that happen after the app has actually
+      started (tracked via a `self._app_started` flag), not the initial
+      one from `__init__`. Verified by actually launching
+      `scanix500-menubar` and confirming the icon appears in the real
+      menu bar with no crash.
 - [ ] The first notification may require approving Python/the app in
       System Settings → Notifications — macOS attributes notifications from
       this venv's interpreter to "Python" the first time.

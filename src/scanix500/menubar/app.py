@@ -45,6 +45,8 @@ class ScanixMenuBarApp(rumps.App):
         self.profiles_path = default_profiles_path()
         self.profiles = load_profiles(self.profiles_path)
         self._scanning = False
+        # See _rebuild_menu's comment on self._app_started.
+        self._app_started = False
         self._rebuild_menu()
 
     def _rebuild_menu(self):
@@ -65,12 +67,24 @@ class ScanixMenuBarApp(rumps.App):
         self.menu.add(delete_menu)
 
         # rumps appends the Quit item itself, but only once, inside
-        # initializeStatusBar() — which runs after __init__. Every later
-        # _rebuild_menu() call clears it away, so re-add it here. Menu.add is
-        # keyed by title and ignores duplicates, so doing this before rumps'
-        # own add (during __init__) is harmless.
-        if self.quit_button is not None:
+        # initializeStatusBar() — which runs at the end of App.run(), after
+        # __init__ (and this first _rebuild_menu call) has already
+        # completed. Every LATER _rebuild_menu() call (from Add/Edit/Delete
+        # Profile, once the app is already running) clears the Quit item
+        # away, so it must be re-added then.
+        #
+        # It must NOT be added here on the very first call (during
+        # __init__), even though rumps.Menu's own bookkeeping is keyed by
+        # title and would silently ignore a duplicate key: the underlying
+        # AppKit NSMenuItem object cannot belong to two NSMenus at once, and
+        # initializeStatusBar() unconditionally does its own
+        # mainmenu.add(quit_button) later. Adding it here too — confirmed by
+        # actually running the app — makes that later add raise
+        # NSInternalInconsistencyException ("Item to be inserted into menu
+        # already is in another menu"), crashing the app on every launch.
+        if self._app_started and self.quit_button is not None:
             self.menu.add(self.quit_button)
+        self._app_started = True
 
     def _make_scan_handler(self, profile: Profile):
         def handler(_sender):
