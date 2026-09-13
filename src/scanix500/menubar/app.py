@@ -18,7 +18,7 @@ from scanix500.menubar.profiles import (
     replace_profile,
     save_profiles,
 )
-from scanix500.menubar.runner import ScanResult, run_scan
+from scanix500.menubar.runner import ScanResult, notification_title, run_scan
 
 IDLE_TITLE = "📄"
 SCANNING_TITLE = "📄…"
@@ -41,7 +41,7 @@ def _pick_folder(default_path: str) -> str | None:
 
 class ScanixMenuBarApp(rumps.App):
     def __init__(self):
-        super().__init__(IDLE_TITLE)
+        super().__init__("scanix500", title=IDLE_TITLE)
         self.profiles_path = default_profiles_path()
         self.profiles = load_profiles(self.profiles_path)
         self._scanning = False
@@ -63,6 +63,14 @@ class ScanixMenuBarApp(rumps.App):
         for profile in self.profiles:
             delete_menu.add(rumps.MenuItem(profile.name, callback=self._make_delete_handler(profile.name)))
         self.menu.add(delete_menu)
+
+        # rumps appends the Quit item itself, but only once, inside
+        # initializeStatusBar() — which runs after __init__. Every later
+        # _rebuild_menu() call clears it away, so re-add it here. Menu.add is
+        # keyed by title and ignores duplicates, so doing this before rumps'
+        # own add (during __init__) is harmless.
+        if self.quit_button is not None:
+            self.menu.add(self.quit_button)
 
     def _make_scan_handler(self, profile: Profile):
         def handler(_sender):
@@ -89,17 +97,14 @@ class ScanixMenuBarApp(rumps.App):
     def _on_scan_complete(self, result: ScanResult):
         self._scanning = False
         self.title = IDLE_TITLE
-        if result.ok and not result.partial:
-            title = "Scan complete"
-        elif result.partial:
-            title = "Scan partially completed"
-        else:
-            title = "Scan failed"
-        rumps.notification(title=title, subtitle="", message=result.message)
+        rumps.notification(title=notification_title(result), subtitle="", message=result.message)
 
     def _prompt_profile_fields(self, existing: Profile | None) -> Profile | None:
         name_response = rumps.Window(
-            "Profile name:", "Profile", default_text=existing.name if existing else ""
+            "Profile name:",
+            "Profile",
+            default_text=existing.name if existing else "",
+            cancel="Cancel",
         ).run()
         if not name_response.clicked or not name_response.text:
             return None
@@ -127,7 +132,11 @@ class ScanixMenuBarApp(rumps.App):
         profile = self._prompt_profile_fields(None)
         if profile is None:
             return
-        self.profiles = add_profile(self.profiles, profile)
+        try:
+            self.profiles = add_profile(self.profiles, profile)
+        except ValueError as e:
+            rumps.alert("Add Profile", str(e))
+            return
         save_profiles(self.profiles_path, self.profiles)
         self._rebuild_menu()
 
@@ -139,7 +148,11 @@ class ScanixMenuBarApp(rumps.App):
             updated = self._prompt_profile_fields(current)
             if updated is None:
                 return
-            self.profiles = replace_profile(self.profiles, name, updated)
+            try:
+                self.profiles = replace_profile(self.profiles, name, updated)
+            except ValueError as e:
+                rumps.alert("Edit Profile", str(e))
+                return
             save_profiles(self.profiles_path, self.profiles)
             self._rebuild_menu()
         return handler
