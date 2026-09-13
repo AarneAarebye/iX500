@@ -27,20 +27,30 @@ Phase 2 (menu bar app) and Phase 3 (physical button trigger) are future work per
 
 ## Install
 
+macOS's system/Homebrew Python is "externally managed" (PEP 668) and
+refuses `pip install` outside a virtual environment — plain `pip` may
+also not exist on `PATH` at all. Create a venv first:
+
     brew install sane-backends ocrmypdf tesseract
-    pip install python-sane
-    pip install -e ".[dev]"
+    python3 -m venv .venv
+    .venv/bin/pip install python-sane
+    .venv/bin/pip install -e ".[dev]"
+
+From here on, replace bare `pip`/`pytest`/`scanix500` with
+`.venv/bin/pip`/`.venv/bin/pytest`/`.venv/bin/scanix500` — or run
+`source .venv/bin/activate` once per terminal session to use the bare
+commands for that session.
 
 ## Run
 
-    scanix500 ~/Documents/Scans
-    scanix500 ~/Documents/Scans --split-on-blank
-    scanix500 ~/Documents/Scans --skip-ocr
-    scanix500 ~/Documents/Scans --skip-blank-filter
+    .venv/bin/scanix500 ~/Documents/Scans
+    .venv/bin/scanix500 ~/Documents/Scans --split-on-blank
+    .venv/bin/scanix500 ~/Documents/Scans --skip-ocr
+    .venv/bin/scanix500 ~/Documents/Scans --skip-blank-filter
 
 ## Automated tests
 
-    pytest
+    .venv/bin/pytest
 
 24 tests cover all pure logic (capture pairing/multi-feed/empty-ADF/odd-frame
 handling, blank detection and splitting, PDF assembly, page DPI geometry and
@@ -92,11 +102,13 @@ Run these by hand against the real iX500 after any change to `capture.py` or
 
 ### Install
 
-    pip install -e ".[menubar]"
+Uses the same venv as above:
+
+    .venv/bin/pip install -e ".[menubar]"
 
 ### Run manually
 
-    scanix500-menubar
+    .venv/bin/scanix500-menubar
 
 A menu bar icon (📄) appears with one item per saved profile, plus
 Add/Edit/Delete Profile submenus. Profiles are stored at
@@ -105,7 +117,7 @@ single "Default" profile on first run.
 
 ### Auto-launch at login
 
-1. Find the installed script's full path: `which scanix500-menubar`
+1. Find the installed script's full path: `cd /path/to/iX500 && pwd -P` then append `/.venv/bin/scanix500-menubar` (or `which scanix500-menubar` if you've activated the venv in your current shell)
 2. Copy `packaging/com.scanix500.menubar.plist` to `~/Library/LaunchAgents/`
 3. Edit the copied plist's `ProgramArguments` entry to the path from step 1
 4. Edit the copied plist's `EnvironmentVariables` → `PATH` value so its first
