@@ -1,4 +1,7 @@
-from scanix500.menubar.runner import ScanResult, parse_scan_output
+from unittest.mock import MagicMock, patch
+
+from scanix500.menubar.profiles import Profile
+from scanix500.menubar.runner import ScanResult, parse_scan_output, run_scan
 
 
 def test_parse_scan_output_success_with_paths():
@@ -76,3 +79,31 @@ def test_parse_scan_output_generic_failure():
         message="Scanner not found: No iX500 found via SANE fujitsu backend",
         output_paths=[],
     )
+
+
+def test_run_scan_builds_argv_from_profile_flags_and_delegates_to_parse():
+    profile = Profile(
+        name="Receipts",
+        destination="/tmp/receipts",
+        skip_blank_filter=True,
+        skip_ocr=True,
+        split_on_blank=True,
+    )
+    fake_completed = MagicMock(returncode=0, stdout="/tmp/receipts/scan_1.pdf\n", stderr="")
+
+    with patch("scanix500.menubar.runner.subprocess.run", return_value=fake_completed) as mock_run:
+        result = run_scan(profile)
+
+    mock_run.assert_called_once_with(
+        [
+            "scanix500",
+            "/tmp/receipts",
+            "--skip-blank-filter",
+            "--skip-ocr",
+            "--split-on-blank",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.ok is True
+    assert result.output_paths == ["/tmp/receipts/scan_1.pdf"]

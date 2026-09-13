@@ -44,3 +44,19 @@ def parse_scan_output(returncode: int, stdout: str, stderr: str) -> ScanResult:
 
     message = stderr_lines[0] if stderr_lines else f"scanix500 exited with code {returncode}"
     return ScanResult(ok=False, partial=False, message=message, output_paths=[])
+
+
+def _build_argv(profile: Profile) -> list[str]:
+    argv = ["scanix500", profile.destination]
+    if profile.skip_blank_filter:
+        argv.append("--skip-blank-filter")
+    if profile.skip_ocr:
+        argv.append("--skip-ocr")
+    if profile.split_on_blank:
+        argv.append("--split-on-blank")
+    return argv
+
+
+def run_scan(profile: Profile) -> ScanResult:
+    result = subprocess.run(_build_argv(profile), capture_output=True, text=True)
+    return parse_scan_output(result.returncode, result.stdout, result.stderr)
