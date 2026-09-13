@@ -224,3 +224,38 @@ GUI/AppKit code:
       Quit item (the menu is rebuilt from scratch on each change).
 - [ ] Quit and relaunch `scanix500-menubar`: profiles persist correctly
       from `profiles.json`.
+
+## Phase 3: Physical Scan-button trigger
+
+No install step beyond what Phase 2 already needs — the button watcher is
+built into the menu bar app (`scanix500-menubar`) and requires no extra
+dependency.
+
+### Manual checklist
+
+`button_watcher.py` and the `rumps.Timer` wiring in `app.py` have no
+automated tests, since they're live hardware/GUI code:
+
+- [ ] Launch `scanix500-menubar` with an existing `profiles.json` from a
+      Phase 2 install (i.e. one that does NOT yet have a "Hardware Button"
+      profile): confirm the profile is added automatically (check
+      `~/Library/Application Support/scanix500/profiles.json` after
+      launch, or check the "Edit Profile…"/"Delete Profile…" submenus)
+      without any manual step.
+- [ ] Press the physical Scan button on the iX500 (with paper loaded):
+      confirm a scan starts using the "Hardware Button" profile — icon
+      changes to the scanning state, then a completion notification
+      appears, exactly like clicking that profile in the menu would.
+- [ ] Press the button while a scan is already in progress (from a menu
+      click or a previous button press): confirm nothing happens (no
+      double-scan, no crash) — same guard as clicking a profile mid-scan.
+- [ ] Unplug the scanner while the menu bar app is running: confirm no
+      crash, no error notification spam — the app just quietly stops
+      detecting presses until it's plugged back in.
+- [ ] Delete or rename the "Hardware Button" profile via the Delete/Edit
+      Profile menu, then press the physical button: confirm it's a silent
+      no-op (no crash, no notification) rather than triggering the wrong
+      profile.
+- [ ] While the menu bar app is running and polling, confirm another
+      application (e.g. VueScan, Image Capture) can still open and use the
+      scanner in between polls — the device is not held open continuously.
