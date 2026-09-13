@@ -37,3 +37,33 @@ def test_filter_pages_keeps_both_sides_when_neither_blank():
     partitions = filter_pages(pages)
 
     assert partitions == [[pages[0].front, pages[0].back]]
+
+
+def test_filter_pages_splits_on_fully_blank_separator_sheet():
+    doc1_page = PagePair(_content_image(), _content_image())
+    separator = PagePair(_blank_image(), _blank_image())
+    doc2_page = PagePair(_content_image(), _content_image())
+    pages = [doc1_page, separator, doc2_page]
+
+    partitions = filter_pages(pages, split_on_blank=True)
+
+    assert len(partitions) == 2
+    assert partitions[0] == [doc1_page.front, doc1_page.back]
+    assert partitions[1] == [doc2_page.front, doc2_page.back]
+
+
+def test_filter_pages_without_split_on_blank_ignores_separator_boundary():
+    doc1_page = PagePair(_content_image(), _content_image())
+    separator = PagePair(_blank_image(), _blank_image())
+    doc2_page = PagePair(_content_image(), _content_image())
+    pages = [doc1_page, separator, doc2_page]
+
+    partitions = filter_pages(pages, split_on_blank=False)
+
+    assert len(partitions) == 1
+    assert partitions[0] == [
+        doc1_page.front,
+        doc1_page.back,
+        doc2_page.front,
+        doc2_page.back,
+    ]
