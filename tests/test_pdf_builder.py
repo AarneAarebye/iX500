@@ -1,5 +1,6 @@
 from pathlib import Path
 from unittest.mock import patch
+import subprocess as subprocess_module
 
 from PIL import Image
 from pypdf import PdfReader
@@ -37,3 +38,17 @@ def test_build_pdf_with_ocr_invokes_ocrmypdf_per_page(tmp_path):
     assert mock_run.call_count == 2
     reader = PdfReader(str(output_path))
     assert len(reader.pages) == 2
+
+
+def test_build_pdf_falls_back_to_image_only_when_ocr_fails(tmp_path):
+    images = [_content_image()]
+    output_path = tmp_path / "out.pdf"
+
+    def failing_run(cmd, check, capture_output):
+        raise subprocess_module.CalledProcessError(returncode=1, cmd=cmd)
+
+    with patch("scanix500.pdf_builder.subprocess.run", side_effect=failing_run):
+        build_pdf(images, output_path, ocr=True)  # must not raise
+
+    reader = PdfReader(str(output_path))
+    assert len(reader.pages) == 1
