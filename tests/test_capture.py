@@ -97,3 +97,16 @@ def test_find_fujitsu_device_matches_by_vendor():
     ]
 
     assert find_fujitsu_device(devices) == "fujitsu:ScanSnap iX500:1203900"
+
+
+def test_find_fujitsu_device_matches_by_model_substring():
+    # Vendor string doesn't say "fujitsu", but the model does say "ix500".
+    devices = [("some:other:device", "ACME", "Widget iX500 Pro", "scanner")]
+
+    assert find_fujitsu_device(devices) == "some:other:device"
+
+
+def test_find_fujitsu_device_returns_none_when_not_found():
+    devices = [("epson:net:1.2.3.4", "EPSON", "Perfection V600", "scanner")]
+
+    assert find_fujitsu_device(devices) is None
