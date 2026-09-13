@@ -27,6 +27,16 @@ def _default_profile() -> Profile:
     )
 
 
+HARDWARE_BUTTON_PROFILE_NAME = "Hardware Button"
+
+
+def _hardware_button_profile() -> Profile:
+    return Profile(
+        name=HARDWARE_BUTTON_PROFILE_NAME,
+        destination=str(Path.home() / "Documents" / "Scans"),
+    )
+
+
 def _seed_default(path: Path) -> list[Profile]:
     seeded = [_default_profile()]
     save_profiles(path, seeded)
@@ -38,12 +48,19 @@ def load_profiles(path: Path) -> list[Profile]:
         return _seed_default(path)
     try:
         data = json.loads(path.read_text())
-        return [Profile(**entry) for entry in data]
+        profiles = [Profile(**entry) for entry in data]
     except (json.JSONDecodeError, TypeError, KeyError):
         # A corrupt or schema-drifted profiles.json must not crash the app
         # before the menu bar icon ever appears (under launchd there is no
         # terminal to show the traceback). Recover with a fresh default.
         return _seed_default(path)
+
+    if not any(p.name == HARDWARE_BUTTON_PROFILE_NAME for p in profiles):
+        # Migrate existing installations (profiles.json predates Phase 3)
+        # so the button works after an upgrade with no manual step.
+        profiles = [*profiles, _hardware_button_profile()]
+        save_profiles(path, profiles)
+    return profiles
 
 
 def save_profiles(path: Path, profiles: list[Profile]) -> None:

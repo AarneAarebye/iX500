@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from scanix500.menubar.profiles import (
+    HARDWARE_BUTTON_PROFILE_NAME,
     Profile,
     add_profile,
     delete_profile,
@@ -17,6 +18,7 @@ def test_save_and_load_round_trip(tmp_path):
     profiles = [
         Profile(name="Documents", destination="/tmp/docs", skip_ocr=False),
         Profile(name="Receipts", destination="/tmp/receipts", skip_ocr=True, split_on_blank=True),
+        Profile(name=HARDWARE_BUTTON_PROFILE_NAME, destination="/tmp/docs"),
     ]
 
     save_profiles(path, profiles)
@@ -145,3 +147,14 @@ def test_delete_profile_raises_when_only_one_profile_remains():
 
     with pytest.raises(ValueError):
         delete_profile(existing, "Documents")
+
+
+def test_load_profiles_adds_hardware_button_profile_when_missing_from_existing_file(tmp_path):
+    path = tmp_path / "profiles.json"
+    save_profiles(path, [Profile(name="Documents", destination="/tmp/docs")])
+
+    loaded = load_profiles(path)
+
+    assert [p.name for p in loaded] == ["Documents", HARDWARE_BUTTON_PROFILE_NAME]
+    # The migration was persisted, not just returned in memory:
+    assert [p.name for p in load_profiles(path)] == ["Documents", HARDWARE_BUTTON_PROFILE_NAME]
