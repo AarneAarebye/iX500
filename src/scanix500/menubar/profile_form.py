@@ -62,6 +62,7 @@ class _ProfileFormDelegate(NSObject):
         window.setTitle_("Profile")
         window.center()
         self.window = window
+        window.setDelegate_(self)
         content = window.contentView()
 
         name_label = NSTextField.labelWithString_("Name:")
@@ -151,6 +152,10 @@ class _ProfileFormDelegate(NSObject):
     def cancelClicked_(self, _sender) -> None:
         self.result = "cancel"
         NSApplication.sharedApplication().stopModal()
+
+    def windowShouldClose_(self, _sender) -> bool:
+        self.cancelClicked_(_sender)
+        return True
 
     def build_profile(self) -> Profile:
         return Profile(
