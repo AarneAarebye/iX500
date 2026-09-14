@@ -43,9 +43,22 @@ def _seed_default(path: Path) -> list[Profile]:
     return seeded
 
 
+def _hardware_button_marker_path(profiles_path: Path) -> Path:
+    """Marks that the one-time Hardware Button migration has already run.
+
+    Kept as a separate file rather than a field in profiles.json so
+    save_profiles' bare-array format stays untouched — ordinary
+    Add/Edit/Delete saves are unaffected.
+    """
+    return profiles_path.parent / ".hardware_button_seeded"
+
+
 def load_profiles(path: Path) -> list[Profile]:
+    marker = _hardware_button_marker_path(path)
     if not path.exists():
-        return _seed_default(path)
+        seeded = _seed_default(path)
+        marker.touch()
+        return seeded
     try:
         data = json.loads(path.read_text())
         profiles = [Profile(**entry) for entry in data]
@@ -53,14 +66,26 @@ def load_profiles(path: Path) -> list[Profile]:
         # A corrupt or schema-drifted profiles.json must not crash the app
         # before the menu bar icon ever appears (under launchd there is no
         # terminal to show the traceback). Recover with a fresh default.
-        return _seed_default(path)
+        seeded = _seed_default(path)
+        marker.touch()
+        return seeded
 
-    if not any(p.name == HARDWARE_BUTTON_PROFILE_NAME for p in profiles):
-        # Migrate existing installations (profiles.json predates Phase 3)
-        # so the button works after an upgrade with no manual step.
-        profiles = [*profiles, _hardware_button_profile()]
-        save_profiles(path, profiles)
+    if not marker.exists():
+        # One-time migration for installations that predate the Hardware
+        # Button feature. After this runs once, a deliberate deletion of
+        # the profile is permanent — we never re-add it again.
+        if not any(p.name == HARDWARE_BUTTON_PROFILE_NAME for p in profiles):
+            profiles = [*profiles, _hardware_button_profile()]
+            save_profiles(path, profiles)
+        marker.touch()
     return profiles
+
+
+def find_profile(profiles: list[Profile], name: str) -> Profile | None:
+    for profile in profiles:
+        if profile.name == name:
+            return profile
+    return None
 
 
 def save_profiles(path: Path, profiles: list[Profile]) -> None:

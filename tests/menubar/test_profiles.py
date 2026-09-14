@@ -7,6 +7,7 @@ from scanix500.menubar.profiles import (
     Profile,
     add_profile,
     delete_profile,
+    find_profile,
     load_profiles,
     replace_profile,
     save_profiles,
@@ -153,5 +154,27 @@ def test_load_profiles_adds_hardware_button_profile_when_missing_from_existing_f
     loaded = load_profiles(path)
 
     assert [p.name for p in loaded] == ["Documents", HARDWARE_BUTTON_PROFILE_NAME]
-    # The migration was persisted, not just returned in memory:
+    # The migration was persisted, not just returned in memory — and it
+    # survives a reload even though the one-time migration no longer re-runs.
     assert [p.name for p in load_profiles(path)] == ["Documents", HARDWARE_BUTTON_PROFILE_NAME]
+
+
+def test_load_profiles_does_not_re_add_hardware_button_after_deletion(tmp_path):
+    path = tmp_path / "profiles.json"
+    save_profiles(path, [Profile(name="Documents", destination="/tmp/docs")])
+    load_profiles(path)  # triggers the one-time migration, creates the marker
+
+    # Simulate the user deleting the Hardware Button profile afterward.
+    remaining = [Profile(name="Documents", destination="/tmp/docs")]
+    save_profiles(path, remaining)
+
+    reloaded = load_profiles(path)
+
+    assert [p.name for p in reloaded] == ["Documents"]
+
+
+def test_find_profile_returns_matching_profile_or_none():
+    profiles = [Profile(name="Documents", destination="/tmp/docs")]
+
+    assert find_profile(profiles, "Documents") == profiles[0]
+    assert find_profile(profiles, "Missing") is None
