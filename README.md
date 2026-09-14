@@ -38,8 +38,15 @@ also not exist on `PATH` at all. Create a venv first:
 
     brew install sane-backends ocrmypdf tesseract
     python3 -m venv .venv
-    .venv/bin/pip install python-sane
+    CPATH="$(brew --prefix sane-backends)/include" LIBRARY_PATH="$(brew --prefix sane-backends)/lib" .venv/bin/pip install python-sane
     .venv/bin/pip install -e ".[dev]"
+
+`python-sane` compiles a C extension against `sane-backends`' headers
+(`sane/sane.h`), and pip has no way to find them on its own — a plain
+`.venv/bin/pip install python-sane` fails with
+`fatal error: 'sane/sane.h' file not found` (confirmed on real hardware
+setup). The `CPATH`/`LIBRARY_PATH` exports above point the compiler at
+Homebrew's copy; only needed for this one install command.
 
 From here on, replace bare `pip`/`pytest`/`scanix500` with
 `.venv/bin/pip`/`.venv/bin/pytest`/`.venv/bin/scanix500` — or run
