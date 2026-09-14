@@ -16,6 +16,7 @@ from scanix500.menubar.profiles import (
     add_profile,
     default_profiles_path,
     delete_profile,
+    find_profile,
     load_profiles,
     replace_profile,
     save_profiles,
@@ -24,6 +25,15 @@ from scanix500.menubar.runner import ScanResult, notification_title, run_scan
 
 IDLE_TITLE = "📄"
 SCANNING_TITLE = "📄…"
+
+# While no device name is resolved yet, only retry resolve_device_name()
+# every Nth poll tick (20 * 1.5s ≈ 30s). That call does sane.init() +
+# sane.get_devices(), which probes every backend and commonly blocks for
+# seconds on the main thread — orders of magnitude more expensive than the
+# ~5-20ms open/close that button_pressed() does, which is what the 1.5s
+# poll interval was actually budgeted for. Retrying it every tick with no
+# scanner present freezes the menu bar UI roughly continuously.
+RESOLVE_RETRY_TICKS = 20
 
 
 def _pick_folder(default_path: str) -> str | None:
@@ -50,7 +60,13 @@ class ScanixMenuBarApp(rumps.App):
         # See _rebuild_menu's comment on self._app_started.
         self._app_started = False
         self._rebuild_menu()
+        # Resolved once and cached indefinitely — confirmed empirically (unplug/
+        # replug test against real hardware, 2026-09-14) that this backend's
+        # device name is based on the unit's persistent serial number, not a
+        # USB bus path, so it stays stable across reconnects. No invalidation
+        # needed.
         self._button_device_name: str | None = None
+        self._ticks_since_resolve_attempt = 0
         self._button_timer = rumps.Timer(self._poll_button, 1.5)
         self._button_timer.start()
 
@@ -104,16 +120,24 @@ class ScanixMenuBarApp(rumps.App):
         return handler
 
     def _poll_button(self, _sender):
-        if self._button_device_name is None:
-            self._button_device_name = resolve_device_name()
-        if self._button_device_name is None:
+        # Don't touch the device at all while a scan is running: run_scan
+        # spawns the scanix500 CLI as a subprocess that holds the device open
+        # for the whole scan, so polling it would mean repeated open attempts
+        # against a device another process is actively streaming from — for no
+        # benefit, since _start_scan discards a press detected mid-scan anyway.
+        if self._scanning:
             return
+        if self._button_device_name is None:
+            if self._ticks_since_resolve_attempt % RESOLVE_RETRY_TICKS == 0:
+                self._button_device_name = resolve_device_name()
+            self._ticks_since_resolve_attempt += 1
+            if self._button_device_name is None:
+                return
         if not button_pressed(self._button_device_name):
             return
-        for profile in self.profiles:
-            if profile.name == HARDWARE_BUTTON_PROFILE_NAME:
-                self._start_scan(profile)
-                return
+        profile = find_profile(self.profiles, HARDWARE_BUTTON_PROFILE_NAME)
+        if profile is not None:
+            self._start_scan(profile)
 
     def _run_scan_thread(self, profile: Profile):
         # Any exception here would kill this thread silently and strand
