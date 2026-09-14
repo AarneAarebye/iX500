@@ -1,5 +1,9 @@
 from unittest.mock import patch
 
+import pytest
+
+pytest.importorskip("rumps")
+
 from scanix500.menubar.profiles import Profile
 from scanix500.menubar.runner import ScanResult
 
@@ -26,3 +30,43 @@ def test_execute_scan_returns_run_scan_result_unchanged_on_success():
         result = app._execute_scan(Profile(name="Default", destination="/tmp/scans"))
 
     assert result == expected
+
+
+def test_init_survives_bridge_startup_oserror():
+    # The bridge is an optional enhancement -- a taken port (OSError, e.g.
+    # another scanix500-menubar already running) must not take the whole
+    # menu bar app down with it. __init__ must complete, self._bridge_server
+    # must be set to None (not left unset, and not the OSError), and the
+    # failure must be surfaced via a notification rather than silently
+    # swallowed.
+    from scanix500.menubar.app import ScanixMenuBarApp
+
+    with (
+        patch("scanix500.menubar.app.load_profiles", return_value=[Profile(name="Default", destination="/tmp/scans")]),
+        patch("scanix500.menubar.app.default_profiles_path", return_value="/tmp/scanix500-test-profiles.json"),
+        patch("scanix500.menubar.app.start_bridge_server", side_effect=OSError("Address already in use")),
+        patch("scanix500.menubar.app.rumps.notification") as notification,
+    ):
+        app = ScanixMenuBarApp()
+
+    assert app._bridge_server is None
+    assert notification.called
+    assert notification.call_args.kwargs["title"] == "Scan bridge unavailable"
+
+
+def test_init_survives_bridge_startup_valueerror():
+    # Same as above, but for a non-numeric SCANIX500_BRIDGE_PORT (which
+    # start_bridge_server's own int(os.environ.get(...)) raises ValueError
+    # on) rather than a taken port.
+    from scanix500.menubar.app import ScanixMenuBarApp
+
+    with (
+        patch("scanix500.menubar.app.load_profiles", return_value=[Profile(name="Default", destination="/tmp/scans")]),
+        patch("scanix500.menubar.app.default_profiles_path", return_value="/tmp/scanix500-test-profiles.json"),
+        patch("scanix500.menubar.app.start_bridge_server", side_effect=ValueError("invalid literal for int()")),
+        patch("scanix500.menubar.app.rumps.notification") as notification,
+    ):
+        app = ScanixMenuBarApp()
+
+    assert app._bridge_server is None
+    assert notification.called

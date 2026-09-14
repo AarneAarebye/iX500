@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+import json
+import os
+import threading
+from collections.abc import Callable
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Protocol
+from urllib.parse import unquote, urlsplit
 
 from scanix500.menubar.profiles import Profile, find_profile
 from scanix500.menubar.runner import ScanResult
@@ -45,14 +51,6 @@ def route_scan_request(profiles: list[Profile], name: str, trigger: ScanTrigger)
     }
 
 
-import json
-import os
-import threading
-from collections.abc import Callable
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import unquote
-
-
 def make_handler_class(
     get_profiles: Callable[[], list[Profile]], trigger: ScanTrigger
 ) -> type[BaseHTTPRequestHandler]:
@@ -71,6 +69,31 @@ def make_handler_class(
             self.end_headers()
             self.wfile.write(payload)
 
+        def send_error(self, code, message=None, explain=None):  # noqa: N802 - BaseHTTPRequestHandler's own naming
+            # Overridden so every response -- including the fallback path
+            # for unhandled methods (GET, PUT, ...) that BaseHTTPRequestHandler
+            # produces on its own -- carries the CORS header, per this
+            # bridge's own "every response, success or error" contract.
+            # Mirrors the stdlib implementation's own message/explain
+            # defaulting (self.responses[code]) rather than leaving an
+            # unhandled-method response with an empty body.
+            try:
+                shortmsg, longmsg = self.responses[code]
+            except KeyError:
+                shortmsg, longmsg = "???", "???"
+            if message is None:
+                message = shortmsg
+            if explain is None:
+                explain = longmsg
+            self.send_response(code, message)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Type", "text/html;charset=utf-8")
+            body = f"{message}: {explain}".encode("utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            if self.command != "HEAD" and body:
+                self.wfile.write(body)
+
         def do_OPTIONS(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler's own naming
             self.send_response(204)
             self.send_header("Access-Control-Allow-Origin", "*")
@@ -80,11 +103,17 @@ def make_handler_class(
             self.end_headers()
 
         def do_POST(self) -> None:  # noqa: N802
+            # Never reads self.rfile -- safe only because protocol_version
+            # stays the default HTTP/1.0 (each connection closes after one
+            # response, so there's no leftover unread body to corrupt a
+            # later request on the same connection); revisit if this is
+            # ever bumped to HTTP/1.1 with request bodies in play.
             prefix = "/scan/"
-            if not self.path.startswith(prefix):
+            path = urlsplit(self.path).path
+            if not path.startswith(prefix):
                 self._send_json(404, {"error": "not found"})
                 return
-            name = unquote(self.path[len(prefix):])
+            name = unquote(path[len(prefix):])
             status, body = route_scan_request(get_profiles(), name, trigger)
             self._send_json(status, body)
 

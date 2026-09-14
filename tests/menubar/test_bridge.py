@@ -162,6 +162,46 @@ def test_bridge_server_options_preflight_is_handled(unused_tcp_port):
         server.shutdown()
 
 
+def test_bridge_server_strips_query_string_from_profile_name(unused_tcp_port):
+    # POST /scan/Dossiary%20Scan?t=123 must still resolve to the profile
+    # named "Dossiary Scan" -- do_POST has to strip the query string
+    # before unquoting/matching the path, not include it in the decoded
+    # name.
+    profiles = [Profile(name="Dossiary Scan", destination="/tmp/scans")]
+    result = ScanResult(ok=True, partial=False, message="/tmp/scans/scan_1.pdf", output_paths=["/tmp/scans/scan_1.pdf"])
+    trigger = FakeScanTrigger(result=result)
+    server = start_bridge_server(lambda: profiles, trigger, port=unused_tcp_port)
+    try:
+        status, body = _post(f"http://127.0.0.1:{unused_tcp_port}/scan/Dossiary%20Scan?t=123")
+    finally:
+        server.shutdown()
+
+    assert status == 200
+    assert body["ok"] is True
+    assert trigger.called_with == profiles[0]
+
+
+def test_bridge_server_unhandled_method_still_has_cors_header(unused_tcp_port):
+    # Every response -- success or error, including methods this bridge
+    # never explicitly handles (GET, PUT, ...) -- must carry
+    # Access-Control-Allow-Origin, not just the do_POST/do_OPTIONS paths.
+    server = start_bridge_server(lambda: [], FakeScanTrigger(), port=unused_tcp_port)
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{unused_tcp_port}/scan/Default", method="GET")
+        try:
+            with urllib.request.urlopen(req) as resp:
+                status = resp.status
+                headers = resp.headers
+        except urllib.error.HTTPError as e:
+            status = e.code
+            headers = e.headers
+    finally:
+        server.shutdown()
+
+    assert status == 501
+    assert headers["Access-Control-Allow-Origin"] == "*"
+
+
 def test_bridge_server_reads_profiles_live_not_a_snapshot(unused_tcp_port):
     # get_profiles is called fresh on every request, not captured once at
     # start_bridge_server() time -- proves a profile added via Add Profile

@@ -253,9 +253,22 @@ GUI/AppKit code:
       Quit item (the menu is rebuilt from scratch on each change).
 - [ ] Quit and relaunch `scanix500-menubar`: profiles persist correctly
       from `profiles.json`.
-- [ ] The four `curl` checks in Task 3 Step 6 of
-      `docs/superpowers/plans/2026-09-14-scanix500-http-bridge.md` all
-      behave as described against the real running app.
+- [ ] With a profile named `"Default"` already present and paper loaded
+      in the ADF, `curl -i -X POST http://127.0.0.1:8765/scan/Default` —
+      the menu bar icon changes to the scanning state, the request blocks
+      until the scan completes, and the response is `200` with a JSON
+      body naming the output PDF path.
+- [ ] `curl -i -X POST http://127.0.0.1:8765/scan/Nonexistent` → `404`.
+- [ ] While a scan is running (from the check above, or a physical button
+      press), a second `curl -i -X POST http://127.0.0.1:8765/scan/Default`
+      from another terminal → `409`.
+- [ ] `curl -i -X OPTIONS http://127.0.0.1:8765/scan/Default` → `204`
+      with `Access-Control-Allow-Origin: *`.
+- [ ] From Dossiary's own page (once that side exists), clicking Scan
+      produces a readable response body, not an opaque CORS failure —
+      `curl` above exercises none of the browser's own CORS behavior, and
+      CORS is the entire reason the bridge's OPTIONS handling and
+      `Access-Control-Allow-Origin` header exist in the first place.
 
 ## Phase 3: Physical Scan-button trigger
 
@@ -338,6 +351,14 @@ profile by that name exists; a `409` means a scan is already in progress
 (from any trigger — menu, hardware button, or another bridge request) and
 this request was rejected immediately, not queued.
 
+**A bridge request blocks until the scan actually resolves — there is no
+server-side timeout.** It will also block for as long as any modal dialog
+is open in the menu bar app (Add/Edit/Delete Profile, or the folder
+picker), since AppKit only services the main thread's queued work in
+`NSDefaultRunLoopMode`, and an open modal panel runs the main loop in
+`NSModalPanelRunLoopMode` instead — a caller (like Dossiary) that needs to
+avoid an indefinite wait should apply its own client-side timeout.
+
 The port defaults to `8765`; override it by setting `SCANIX500_BRIDGE_PORT`
 before launching `scanix500-menubar`.
 
@@ -347,11 +368,23 @@ paper loaded in the ADF):
     curl -i -X POST http://127.0.0.1:8765/scan/Default
 
 **Trust model**: the bridge binds to `127.0.0.1` only and has no
-authentication — the same trust boundary as the existing menu-click and
-physical-button triggers (anyone with access to this machine can already
-trigger a scan either way). Don't run this on a shared or networked
-machine without understanding that any local process can hit this
-endpoint.
+authentication, `Host` validation, or `Origin` validation, and it returns
+`Access-Control-Allow-Origin: *` on every response (required so Dossiary,
+a `file://` page sending `Origin: null`, can read the response at all — a
+narrower allow-list can't accommodate that). This is broader exposure
+than "physical access to this machine": a plain cross-origin `POST`
+doesn't need CORS permission to be *sent*, only for its *response* to be
+readable, and the wildcard header here makes it readable too — so **any
+web page you visit in any browser on this machine, or any other local
+process**, can `POST` to `http://127.0.0.1:8765/scan/<profile>`, trigger a
+real physical scan, and read back `output_paths` (absolute filesystem
+paths that disclose your username and library location). This isn't a
+flaw to fix here — binding to loopback with no auth is a deliberate
+design choice, and Dossiary's `file://`-origin requirement is exactly
+what rules out a narrower CORS allow-list — but don't run this on a
+shared or networked machine, and understand that the risk isn't limited
+to other people with access to this machine: it includes ordinary web
+browsing on it, by anyone using it.
 
 ### Dossiary integration
 

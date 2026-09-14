@@ -76,7 +76,16 @@ class ScanixMenuBarApp(rumps.App):
         # local HTTP. self.profiles is read fresh on every bridge request
         # (via the lambda), not snapshotted here, so Add/Edit/Delete
         # Profile while the bridge is running is picked up immediately.
-        self._bridge_server = start_bridge_server(lambda: self.profiles, self)
+        # The bridge is an optional enhancement, not core functionality --
+        # a taken port (OSError) or a non-numeric SCANIX500_BRIDGE_PORT
+        # (ValueError) must never take the whole menu bar app down with it,
+        # since a launchd-launched process has nowhere useful for an
+        # uncaught traceback to go.
+        try:
+            self._bridge_server = start_bridge_server(lambda: self.profiles, self)
+        except (OSError, ValueError) as e:
+            self._bridge_server = None
+            rumps.notification(title="Scan bridge unavailable", subtitle="", message=str(e))
 
     def _rebuild_menu(self):
         self.menu.clear()
@@ -166,13 +175,21 @@ class ScanixMenuBarApp(rumps.App):
 
     def _run_scan_thread(self, profile: Profile, on_done: Callable[[ScanResult], None] | None = None):
         result = self._execute_scan(profile)
-        # rumps.Timer.start() schedules onto NSRunLoop.currentRunLoop(), which
-        # from this worker thread is a run loop nothing ever runs — the
-        # callback would never fire. AppHelper.callAfter marshals onto the
-        # main thread's run loop from any thread.
-        AppHelper.callAfter(self._on_scan_complete, result)
-        if on_done is not None:
-            on_done(result)
+        try:
+            # rumps.Timer.start() schedules onto NSRunLoop.currentRunLoop(),
+            # which from this worker thread is a run loop nothing ever runs
+            # — the callback would never fire. AppHelper.callAfter marshals
+            # onto the main thread's run loop from any thread.
+            #
+            # Scheduled before on_done(result) runs below, and on_done must
+            # stay in a finally so it always fires -- see trigger()'s own
+            # docstring for why this exact ordering (schedule
+            # _on_scan_complete, then unblock the waiting bridge thread)
+            # matters, not just that on_done eventually gets called.
+            AppHelper.callAfter(self._on_scan_complete, result)
+        finally:
+            if on_done is not None:
+                on_done(result)
 
     def trigger(self, profile: Profile) -> ScanResult:
         """ScanTrigger implementation (see bridge.py) -- called from an HTTP
@@ -187,7 +204,18 @@ class ScanixMenuBarApp(rumps.App):
         can't both pass the busy check before either sets self._scanning.
         Blocks the calling thread until the scan resolves (or the
         busy-guard fires), so the bridge's HTTP response reflects the real
-        ScanResult, not just "started"."""
+        ScanResult, not just "started".
+
+        Correctness note: it's safe for this HTTP response to be returned
+        before self._scanning is reset back to False only because
+        AppHelper.callAfter is FIFO on the main run loop, and
+        _run_scan_thread schedules _on_scan_complete (via callAfter) BEFORE
+        it calls on_done -- so by the time on_done() unblocks this thread,
+        _on_scan_complete is already queued ahead of anything a client's
+        immediate follow-up request could trigger. If that ordering in
+        _run_scan_thread were ever reversed, an immediate follow-up bridge
+        request could race _on_scan_complete's self._scanning = False and
+        see a spurious 409 -- don't reorder those two lines there."""
         done = threading.Event()
         result_box: list[ScanResult | None] = [None]
         started_box: list[bool] = [False]
@@ -197,7 +225,10 @@ class ScanixMenuBarApp(rumps.App):
             done.set()
 
         def on_main_thread():
-            started_box[0] = self._start_scan(profile, on_done=on_done)
+            try:
+                started_box[0] = self._start_scan(profile, on_done=on_done)
+            except Exception:  # noqa: BLE001 - must never strand the waiting HTTP thread
+                started_box[0] = False
             if not started_box[0]:
                 done.set()
 
