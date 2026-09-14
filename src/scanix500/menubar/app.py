@@ -259,11 +259,18 @@ class ScanixMenuBarApp(rumps.App):
         if destination is None:
             return None
 
-        # NOTE: rumps.alert's return value convention (1 = the `ok` button,
-        # 0 = the `cancel` button) is documented but unverified in this
-        # environment — confirm in the manual checklist.
-        skip_blank_filter = rumps.alert("Profile", "Skip blank-page filter?", ok="Yes", cancel="No") == 1
-        skip_ocr = rumps.alert("Profile", "Skip OCR?", ok="Yes", cancel="No") == 1
+        # rumps.alert's return value convention (1 = the `ok` button, 0 =
+        # the `cancel` button) was confirmed against the installed rumps
+        # source during Phase 2's final review.
+        #
+        # Questions are phrased as "Use X?" (positive framing) rather than
+        # "Skip X?", so a "Yes" answer always means "turn the feature on" —
+        # the skip_* fields are still what Profile/the CLI expect, so the
+        # answer is inverted right here rather than changing that contract.
+        use_blank_filter = rumps.alert("Profile", "Use blank-page filter?", ok="Yes", cancel="No") == 1
+        skip_blank_filter = not use_blank_filter
+        use_ocr = rumps.alert("Profile", "Use OCR?", ok="Yes", cancel="No") == 1
+        skip_ocr = not use_ocr
         split_on_blank = rumps.alert(
             "Profile", "Split on blank separator sheets?", ok="Yes", cancel="No"
         ) == 1
