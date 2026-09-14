@@ -8,6 +8,12 @@ from pypdf import PdfWriter
 
 logger = logging.getLogger(__name__)
 
+# ocrmypdf/Tesseract default to English-only OCR if no language is given —
+# confirmed on real hardware that this silently produced degraded accuracy
+# on German documents (umlauts, ß, word segmentation) even after the "deu"
+# language pack was installed, since nothing ever told ocrmypdf to use it.
+OCR_LANGUAGE = "deu+eng"
+
 
 def _save_image_only_pdf(image: Image.Image, path: Path) -> None:
     # Without an explicit resolution Pillow writes 72-DPI page geometry, which
@@ -28,7 +34,7 @@ def _ocr_single_page(input_path: Path) -> Path:
     output_path = input_path.with_suffix(".ocr.pdf")
     try:
         subprocess.run(
-            ["ocrmypdf", str(input_path), str(output_path)],
+            ["ocrmypdf", "-l", OCR_LANGUAGE, str(input_path), str(output_path)],
             check=True,
             capture_output=True,
         )

@@ -36,7 +36,7 @@ macOS's system/Homebrew Python is "externally managed" (PEP 668) and
 refuses `pip install` outside a virtual environment — plain `pip` may
 also not exist on `PATH` at all. Create a venv first:
 
-    brew install sane-backends ocrmypdf tesseract
+    brew install sane-backends ocrmypdf tesseract tesseract-lang
     python3 -m venv .venv
     CPATH="$(brew --prefix sane-backends)/include" LIBRARY_PATH="$(brew --prefix sane-backends)/lib" .venv/bin/pip install python-sane
     .venv/bin/pip install -e ".[dev]"
@@ -64,7 +64,7 @@ commands for that session.
 
     .venv/bin/pytest
 
-59 tests cover all pure logic (capture pairing/multi-feed/empty-ADF/odd-frame
+60 tests cover all pure logic (capture pairing/multi-feed/empty-ADF/odd-frame
 handling, SANE device matching, blank detection and splitting, PDF assembly,
 page DPI geometry and OCR fallback, output path naming, CLI wiring including
 destination-folder creation, all-blank batches and multi-feed partial-batch
@@ -147,6 +147,15 @@ Run these by hand against the real iX500 after any change to `capture.py` or
         enabled (no false positives). The exact trigger conditions and
         failure signature remain to be observed from a real accidental
         double-feed during normal use — update this note when one occurs.
+- [x] **Fixed 2026-09-14, hardware-verified:** OCR quality on German
+      documents. `pdf_builder.py`'s `ocrmypdf` call had no `-l`/`--language`
+      flag at all, so it silently defaulted to English-only recognition —
+      degrading accuracy on umlauts/ß/German word segmentation even after
+      installing the `deu` language pack (`brew install tesseract-lang`),
+      since nothing ever told `ocrmypdf` to use it. Now passes
+      `-l deu+eng` (`OCR_LANGUAGE` in `pdf_builder.py`) by default.
+      Re-verified with a real German document: words containing umlauts
+      and ß (e.g. "Grüße", "Datenschutzgrundverordnung") extracted correctly.
 - [ ] Resulting PDF text is selectable/searchable (OCR ran) unless
       `--skip-ocr` was passed.
 - [ ] Open the resulting PDF and check its physical page size (Preview's
