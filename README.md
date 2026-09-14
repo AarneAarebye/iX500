@@ -253,6 +253,9 @@ GUI/AppKit code:
       Quit item (the menu is rebuilt from scratch on each change).
 - [ ] Quit and relaunch `scanix500-menubar`: profiles persist correctly
       from `profiles.json`.
+- [ ] The four `curl` checks in Task 3 Step 6 of
+      `docs/superpowers/plans/2026-09-14-scanix500-http-bridge.md` all
+      behave as described against the real running app.
 
 ## Phase 3: Physical Scan-button trigger
 
@@ -309,3 +312,61 @@ automated tests, since they're live hardware/GUI code:
 - [ ] While the menu bar app is running and polling, confirm another
       application (e.g. VueScan, Image Capture) can still open and use the
       scanner in between polls — the device is not held open continuously.
+
+## Phase 4: HTTP bridge
+
+No install step beyond what Phase 2 already needs — the bridge is built
+into the menu bar app (`scanix500-menubar`) and requires no extra
+dependency (`http.server` is part of the Python standard library).
+
+### Use
+
+With the menu bar app running, `POST /scan/<profile-name>` (the profile
+name is the final URL path segment, percent-encoded) to
+`http://127.0.0.1:8765` triggers a scan using that profile, exactly as if
+you'd clicked it in the menu — and blocks until the scan finishes,
+returning a JSON body:
+
+```json
+{"ok": true, "partial": false, "message": "/path/to/scan.pdf", "output_paths": ["/path/to/scan.pdf"]}
+```
+
+`ok: false` with `partial: true` means a partial scan (e.g. a multi-feed
+jam) still produced a usable file, named in `output_paths`. `ok: false`
+with `partial: false` means the scan failed outright. A `404` means no
+profile by that name exists; a `409` means a scan is already in progress
+(from any trigger — menu, hardware button, or another bridge request) and
+this request was rejected immediately, not queued.
+
+The port defaults to `8765`; override it by setting `SCANIX500_BRIDGE_PORT`
+before launching `scanix500-menubar`.
+
+**Smoke test** (with a profile named `"Default"` already configured and
+paper loaded in the ADF):
+
+    curl -i -X POST http://127.0.0.1:8765/scan/Default
+
+**Trust model**: the bridge binds to `127.0.0.1` only and has no
+authentication — the same trust boundary as the existing menu-click and
+physical-button triggers (anyone with access to this machine can already
+trigger a scan either way). Don't run this on a shared or networked
+machine without understanding that any local process can hit this
+endpoint.
+
+### Dossiary integration
+
+[Dossiary](https://github.com/AarneAarebye/Dossiary) (a separate app) has its
+own "Scan"/"Scan Multi" toolbar buttons that call this bridge. They expect
+two specific, fixed profile names to already exist:
+
+- **`Dossiary Scan`** — an ordinary profile.
+- **`Dossiary Scan Multi`** — a profile with "Split on blank separator
+  sheets?" answered Yes.
+
+Create both once via **Add Profile…** in the menu bar app, with their
+destination set to your Dossiary library's actual `inbox/` folder (e.g.
+`/path/to/your/library/inbox`) — Dossiary's own "Check inbox" flow picks
+up whatever lands there. These names are a fixed contract Dossiary's own
+code depends on; renaming either profile breaks the integration until
+Dossiary's own setting is updated to match, or the profile is renamed
+back.

@@ -32,6 +32,20 @@ TDD steps.
   mock SANE hardware behavior in automated tests; mock only at the
   orchestration-logic boundary (see `capture.py`'s `SaneDevice` Protocol
   and `FakeSaneDevice` test double for the pattern to follow).
+- **The HTTP bridge (`src/scanix500/menubar/bridge.py`) is embedded in
+  `scanix500-menubar`, not a standalone process** — it shares the app's
+  existing `self._scanning` busy-guard and `_on_scan_complete()`
+  notification path via `ScanixMenuBarApp.trigger()`
+  (`ScanTrigger` protocol), so a scan triggered over HTTP is
+  indistinguishable, from the app's own perspective, from a menu click or
+  a physical button press. `bridge.py` itself has zero rumps/AppKit
+  dependency and is fully unit-testable (`tests/menubar/test_bridge.py`);
+  only the small `ScanixMenuBarApp.trigger()` integration in `app.py` is
+  thread-marshaling/AppKit-dependent code, following this repo's existing
+  "hardware/live-GUI code is manually verified, not mocked" precedent.
+  Fixed, two-way contract with Dossiary: profiles named exactly
+  `"Dossiary Scan"`/`"Dossiary Scan Multi"` must exist for its toolbar
+  buttons to work — see README.md's own "Dossiary integration" section.
 
 ## Project phasing
 
