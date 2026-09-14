@@ -6,12 +6,11 @@ from collections.abc import Callable
 from pathlib import Path
 
 import rumps
-from AppKit import NSOpenPanel
-from Foundation import NSURL
 from PyObjCTools import AppHelper
 
 from scanix500.menubar.bridge import ScanBusyError, start_bridge_server
 from scanix500.menubar.button_watcher import button_pressed, resolve_device_name
+from scanix500.menubar.profile_form import show_profile_form
 from scanix500.menubar.profiles import (
     HARDWARE_BUTTON_PROFILE_NAME,
     Profile,
@@ -36,21 +35,6 @@ SCANNING_TITLE = "📄…"
 # poll interval was actually budgeted for. Retrying it every tick with no
 # scanner present freezes the menu bar UI roughly continuously.
 RESOLVE_RETRY_TICKS = 20
-
-
-def _pick_folder(default_path: str) -> str | None:
-    panel = NSOpenPanel.openPanel()
-    panel.setCanChooseDirectories_(True)
-    panel.setCanChooseFiles_(False)
-    panel.setCanCreateDirectories_(True)
-    panel.setAllowsMultipleSelection_(False)
-    panel.setDirectoryURL_(NSURL.fileURLWithPath_(default_path))
-    # NOTE: 1 is NSOpenPanel's documented "OK button" response. Verify this
-    # against the installed AppKit/PyObjC version in the manual checklist —
-    # it cannot be exercised without a live GUI session.
-    if panel.runModal() == 1:
-        return str(panel.URL().path())
-    return None
 
 
 class ScanixMenuBarApp(rumps.App):
@@ -243,44 +227,10 @@ class ScanixMenuBarApp(rumps.App):
         self.title = IDLE_TITLE
         rumps.notification(title=notification_title(result), subtitle="", message=result.message)
 
-    def _prompt_profile_fields(self, existing: Profile | None) -> Profile | None:
-        name_response = rumps.Window(
-            "Profile name:",
-            "Profile",
-            default_text=existing.name if existing else "",
-            cancel="Cancel",
-        ).run()
-        if not name_response.clicked or not name_response.text:
-            return None
-        name = name_response.text
-
-        default_destination = existing.destination if existing else str(Path.home() / "Documents" / "Scans")
-        destination = _pick_folder(default_destination)
-        if destination is None:
-            return None
-
-        # rumps.alert's return value convention (1 = the `ok` button, 0 =
-        # the `cancel` button) was confirmed against the installed rumps
-        # source during Phase 2's final review.
-        #
-        # Questions are phrased as "Use X?" (positive framing) rather than
-        # "Skip X?", so a "Yes" answer always means "turn the feature on" —
-        # the skip_* fields are still what Profile/the CLI expect, so the
-        # answer is inverted right here rather than changing that contract.
-        use_blank_filter = rumps.alert("Profile", "Use blank-page filter?", ok="Yes", cancel="No") == 1
-        skip_blank_filter = not use_blank_filter
-        use_ocr = rumps.alert("Profile", "Use OCR?", ok="Yes", cancel="No") == 1
-        skip_ocr = not use_ocr
-        split_on_blank = rumps.alert(
-            "Profile", "Split on blank separator sheets?", ok="Yes", cancel="No"
-        ) == 1
-
-        return Profile(name, destination, skip_blank_filter, skip_ocr, split_on_blank)
-
     def _add_profile(self, _sender):
         if self._scanning:
             return
-        profile = self._prompt_profile_fields(None)
+        profile = show_profile_form(None, str(Path.home() / "Documents" / "Scans"))
         if profile is None:
             return
         try:
@@ -296,7 +246,7 @@ class ScanixMenuBarApp(rumps.App):
             if self._scanning:
                 return
             current = next(p for p in self.profiles if p.name == name)
-            updated = self._prompt_profile_fields(current)
+            updated = show_profile_form(current, current.destination)
             if updated is None:
                 return
             try:
