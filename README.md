@@ -259,8 +259,6 @@ GUI/AppKit code:
       failing or leaving an empty menu.
 - [ ] Clicking a profile, or Add/Edit/Delete, while a scan is already in
       progress does nothing (no double-scan, no crash).
-- [ ] Adding a profile whose name already exists is refused with a clear
-      alert instead of creating a duplicate menu row.
 - [ ] After adding/editing/deleting a profile, the menu still has a working
       Quit item (the menu is rebuilt from scratch on each change).
 - [ ] Quit and relaunch `scanix500-menubar`: profiles persist correctly

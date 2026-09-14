@@ -20,5 +20,8 @@ scanix500-menubar = "scanix500.menubar.app:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.pytest.ini_options]
+filterwarnings = ["error::objc.ObjCSuperWarning"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/scanix500"]

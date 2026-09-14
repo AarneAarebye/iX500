@@ -1,6 +1,7 @@
 # src/scanix500/menubar/profile_form.py
 from __future__ import annotations
 
+import objc
 from AppKit import (
     NSApplication,
     NSBackingStoreBuffered,
@@ -45,7 +46,7 @@ class _ProfileFormDelegate(NSObject):
     AppKit/GUI code in app.py and button_watcher.py)."""
 
     def initWithDefaultDestination_(self, default_destination: str):
-        self = super().init()
+        self = objc.super(_ProfileFormDelegate, self).init()
         if self is None:
             return None
         self.result: str | None = None  # "ok" or "cancel" once the modal ends
@@ -146,6 +147,7 @@ class _ProfileFormDelegate(NSObject):
             self.destination_field.setStringValue_(chosen)
 
     def okClicked_(self, _sender) -> None:
+        self.window.makeFirstResponder_(None)
         self.result = "ok"
         NSApplication.sharedApplication().stopModal()
 
@@ -159,7 +161,7 @@ class _ProfileFormDelegate(NSObject):
 
     def build_profile(self) -> Profile:
         return Profile(
-            name=str(self.name_field.stringValue()),
+            name=str(self.name_field.stringValue()).strip(),
             destination=self.destination,
             skip_blank_filter=self.blank_filter_checkbox.state() == 0,
             skip_ocr=self.ocr_checkbox.state() == 0,
