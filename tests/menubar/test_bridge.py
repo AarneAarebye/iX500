@@ -1,6 +1,33 @@
-from scanix500.menubar.bridge import ScanBusyError, route_scan_request
+import json
+import socket
+import threading
+import urllib.error
+import urllib.request
+
+import pytest
+
+from scanix500.menubar.bridge import ScanBusyError, route_scan_request, start_bridge_server
 from scanix500.menubar.profiles import Profile
 from scanix500.menubar.runner import ScanResult
+
+
+@pytest.fixture
+def unused_tcp_port() -> int:
+    """A real free TCP port on 127.0.0.1, found by binding to port 0 and
+    reading back what the OS assigned -- avoids hardcoding a port number
+    that a previous test run's server might still be shutting down on."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def _post(url: str) -> tuple[int, dict]:
+    req = urllib.request.Request(url, method="POST", data=b"")
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return resp.status, json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read())
 
 
 class FakeScanTrigger:
@@ -73,3 +100,79 @@ def test_route_scan_request_partial_result_still_returns_200():
     assert status == 200
     assert body["ok"] is False
     assert body["partial"] is True
+
+
+def test_bridge_server_round_trip_success(unused_tcp_port):
+    profiles = [Profile(name="Dossiary Scan", destination="/tmp/scans")]
+    result = ScanResult(ok=True, partial=False, message="/tmp/scans/scan_1.pdf", output_paths=["/tmp/scans/scan_1.pdf"])
+    trigger = FakeScanTrigger(result=result)
+    server = start_bridge_server(lambda: profiles, trigger, port=unused_tcp_port)
+    try:
+        status, body = _post(f"http://127.0.0.1:{unused_tcp_port}/scan/Dossiary%20Scan")
+    finally:
+        server.shutdown()
+
+    assert status == 200
+    assert body["ok"] is True
+    assert trigger.called_with == profiles[0]
+
+
+def test_bridge_server_round_trip_unknown_profile_is_404(unused_tcp_port):
+    server = start_bridge_server(lambda: [], FakeScanTrigger(), port=unused_tcp_port)
+    try:
+        status, body = _post(f"http://127.0.0.1:{unused_tcp_port}/scan/Nope")
+    finally:
+        server.shutdown()
+
+    assert status == 404
+
+
+def test_bridge_server_round_trip_busy_is_409(unused_tcp_port):
+    profiles = [Profile(name="Dossiary Scan", destination="/tmp/scans")]
+    trigger = FakeScanTrigger(raises=ScanBusyError())
+    server = start_bridge_server(lambda: profiles, trigger, port=unused_tcp_port)
+    try:
+        status, _ = _post(f"http://127.0.0.1:{unused_tcp_port}/scan/Dossiary%20Scan")
+    finally:
+        server.shutdown()
+
+    assert status == 409
+
+
+def test_bridge_server_response_has_cors_header(unused_tcp_port):
+    profiles = [Profile(name="Dossiary Scan", destination="/tmp/scans")]
+    result = ScanResult(ok=True, partial=False, message="ok", output_paths=[])
+    server = start_bridge_server(lambda: profiles, FakeScanTrigger(result=result), port=unused_tcp_port)
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{unused_tcp_port}/scan/Dossiary%20Scan", method="POST", data=b"")
+        with urllib.request.urlopen(req) as resp:
+            assert resp.headers["Access-Control-Allow-Origin"] == "*"
+    finally:
+        server.shutdown()
+
+
+def test_bridge_server_options_preflight_is_handled(unused_tcp_port):
+    server = start_bridge_server(lambda: [], FakeScanTrigger(), port=unused_tcp_port)
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{unused_tcp_port}/scan/Dossiary%20Scan", method="OPTIONS")
+        with urllib.request.urlopen(req) as resp:
+            assert resp.status == 204
+            assert resp.headers["Access-Control-Allow-Origin"] == "*"
+    finally:
+        server.shutdown()
+
+
+def test_bridge_server_reads_profiles_live_not_a_snapshot(unused_tcp_port):
+    # get_profiles is called fresh on every request, not captured once at
+    # start_bridge_server() time -- proves a profile added via Add Profile
+    # while the bridge is already running is immediately reachable.
+    profiles = []
+    server = start_bridge_server(lambda: profiles, FakeScanTrigger(result=ScanResult(True, False, "ok", [])), port=unused_tcp_port)
+    try:
+        status, _ = _post(f"http://127.0.0.1:{unused_tcp_port}/scan/Late")
+        assert status == 404
+        profiles.append(Profile(name="Late", destination="/tmp/scans"))
+        status, _ = _post(f"http://127.0.0.1:{unused_tcp_port}/scan/Late")
+        assert status == 200
+    finally:
+        server.shutdown()

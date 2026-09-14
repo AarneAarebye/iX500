@@ -43,3 +43,67 @@ def route_scan_request(profiles: list[Profile], name: str, trigger: ScanTrigger)
         "message": result.message,
         "output_paths": result.output_paths,
     }
+
+
+import json
+import os
+import threading
+from collections.abc import Callable
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import unquote
+
+
+def make_handler_class(
+    get_profiles: Callable[[], list[Profile]], trigger: ScanTrigger
+) -> type[BaseHTTPRequestHandler]:
+    """Builds a BaseHTTPRequestHandler bound to a live profiles getter (a
+    zero-arg callable, not a static list -- profiles.json can change via
+    Add/Edit/Delete Profile while the bridge is running, and every request
+    must see the current list) and a ScanTrigger."""
+
+    class Handler(BaseHTTPRequestHandler):
+        def _send_json(self, status: int, body: dict) -> None:
+            payload = json.dumps(body).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def do_OPTIONS(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler's own naming
+            self.send_response(204)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "*")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def do_POST(self) -> None:  # noqa: N802
+            prefix = "/scan/"
+            if not self.path.startswith(prefix):
+                self._send_json(404, {"error": "not found"})
+                return
+            name = unquote(self.path[len(prefix):])
+            status, body = route_scan_request(get_profiles(), name, trigger)
+            self._send_json(status, body)
+
+        def log_message(self, format: str, *args: object) -> None:
+            # scanix500-menubar has no console under launchd -- keep quiet
+            # rather than writing to a stderr nothing reads.
+            pass
+
+    return Handler
+
+
+def start_bridge_server(
+    get_profiles: Callable[[], list[Profile]], trigger: ScanTrigger, port: int | None = None
+) -> ThreadingHTTPServer:
+    """Starts the bridge listening on 127.0.0.1:<port> in a daemon thread
+    and returns the live server. port resolution order: this parameter (if
+    given) > SCANIX500_BRIDGE_PORT env var > DEFAULT_PORT."""
+    resolved_port = port if port is not None else int(os.environ.get("SCANIX500_BRIDGE_PORT", DEFAULT_PORT))
+    handler_cls = make_handler_class(get_profiles, trigger)
+    server = ThreadingHTTPServer(("127.0.0.1", resolved_port), handler_cls)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
