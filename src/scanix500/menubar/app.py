@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
 import rumps
@@ -9,6 +10,7 @@ from AppKit import NSOpenPanel
 from Foundation import NSURL
 from PyObjCTools import AppHelper
 
+from scanix500.menubar.bridge import ScanBusyError, start_bridge_server
 from scanix500.menubar.button_watcher import button_pressed, resolve_device_name
 from scanix500.menubar.profiles import (
     HARDWARE_BUTTON_PROFILE_NAME,
@@ -69,6 +71,12 @@ class ScanixMenuBarApp(rumps.App):
         self._ticks_since_resolve_attempt = 0
         self._button_timer = rumps.Timer(self._poll_button, 1.5)
         self._button_timer.start()
+        # Embedded HTTP bridge (see bridge.py) -- lets an external caller
+        # (Dossiary's browser JS) trigger a scan by profile name over
+        # local HTTP. self.profiles is read fresh on every bridge request
+        # (via the lambda), not snapshotted here, so Add/Edit/Delete
+        # Profile while the bridge is running is picked up immediately.
+        self._bridge_server = start_bridge_server(lambda: self.profiles, self)
 
     def _rebuild_menu(self):
         self.menu.clear()
@@ -107,12 +115,29 @@ class ScanixMenuBarApp(rumps.App):
             self.menu.add(self.quit_button)
         self._app_started = True
 
-    def _start_scan(self, profile: Profile) -> None:
+    def _start_scan(self, profile: Profile, on_done: Callable[[ScanResult], None] | None = None) -> bool:
+        """Returns True if a scan was actually started, False if one was
+        already in progress (in which case on_done is never called). The
+        two pre-existing callers (_make_scan_handler's menu-click handler,
+        _poll_button's hardware-button path) both ignore the return value
+        and never pass on_done -- unchanged behavior for them. trigger()
+        (below) is the one new caller that uses both."""
         if self._scanning:
-            return
+            return False
         self._scanning = True
         self.title = SCANNING_TITLE
-        threading.Thread(target=self._run_scan_thread, args=(profile,), daemon=True).start()
+        threading.Thread(target=self._run_scan_thread, args=(profile, on_done), daemon=True).start()
+        return True
+
+    def _execute_scan(self, profile: Profile) -> ScanResult:
+        # Any exception here must never propagate -- _run_scan_thread below
+        # would otherwise strand _scanning=True forever, since nothing
+        # downstream would ever reset it. Pure logic, no rumps/AppKit
+        # dependency -- see tests/menubar/test_app.py.
+        try:
+            return run_scan(profile)
+        except Exception as e:  # noqa: BLE001 - must never wedge the app
+            return ScanResult(ok=False, partial=False, message=str(e), output_paths=[])
 
     def _make_scan_handler(self, profile: Profile):
         def handler(_sender):
@@ -139,18 +164,48 @@ class ScanixMenuBarApp(rumps.App):
         if profile is not None:
             self._start_scan(profile)
 
-    def _run_scan_thread(self, profile: Profile):
-        # Any exception here would kill this thread silently and strand
-        # _scanning=True forever, so convert every failure into a ScanResult.
-        try:
-            result = run_scan(profile)
-        except Exception as e:  # noqa: BLE001 - must never wedge the app
-            result = ScanResult(ok=False, partial=False, message=str(e), output_paths=[])
+    def _run_scan_thread(self, profile: Profile, on_done: Callable[[ScanResult], None] | None = None):
+        result = self._execute_scan(profile)
         # rumps.Timer.start() schedules onto NSRunLoop.currentRunLoop(), which
         # from this worker thread is a run loop nothing ever runs — the
         # callback would never fire. AppHelper.callAfter marshals onto the
         # main thread's run loop from any thread.
         AppHelper.callAfter(self._on_scan_complete, result)
+        if on_done is not None:
+            on_done(result)
+
+    def trigger(self, profile: Profile) -> ScanResult:
+        """ScanTrigger implementation (see bridge.py) -- called from an HTTP
+        request-handler thread (ThreadingHTTPServer spawns one per
+        request), never the main thread. Must never touch self.title or
+        call rumps.notification directly from here (AppKit calls are only
+        safe on the main thread), so the actual check-and-set/scan-start
+        happens inside _start_scan(), called via AppHelper.callAfter on
+        the main thread -- the exact same function (not a re-implementation
+        of its guard) that a menu click or the hardware button already
+        calls, so a concurrent bridge request and hardware-button press
+        can't both pass the busy check before either sets self._scanning.
+        Blocks the calling thread until the scan resolves (or the
+        busy-guard fires), so the bridge's HTTP response reflects the real
+        ScanResult, not just "started"."""
+        done = threading.Event()
+        result_box: list[ScanResult | None] = [None]
+        started_box: list[bool] = [False]
+
+        def on_done(result: ScanResult):
+            result_box[0] = result
+            done.set()
+
+        def on_main_thread():
+            started_box[0] = self._start_scan(profile, on_done=on_done)
+            if not started_box[0]:
+                done.set()
+
+        AppHelper.callAfter(on_main_thread)
+        done.wait()
+        if not started_box[0]:
+            raise ScanBusyError()
+        return result_box[0]
 
     def _on_scan_complete(self, result: ScanResult):
         self._scanning = False
