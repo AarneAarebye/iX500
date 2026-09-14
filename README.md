@@ -238,10 +238,22 @@ GUI/AppKit code:
 - [ ] A multi-feed jam (see Phase 1's manual hardware checklist) shows a
       "Scan partially completed" notification distinct from a bare failure,
       naming the partial output path.
-- [ ] Add Profile: name entry → folder picker → three yes/no prompts →
-      new profile appears in the menu and in `profiles.json`.
-- [ ] Edit Profile: existing values are used as the starting point in the
-      name/destination prompts; changes are saved and reflected in the menu.
+- [ ] Add Profile: opens a single window with an empty name field, OK
+      initially disabled. Typing a name enables OK. "Choose…" opens the
+      folder picker and updates the displayed destination path. Clicking
+      OK with the three checkboxes in any combination creates a profile
+      matching them, which appears in the menu and in `profiles.json`.
+- [ ] Edit Profile: the window opens pre-filled with that profile's
+      current name, destination, and all three checkboxes matching its
+      actual current settings (not blank/default) — this is the gap the
+      2026-09-14 profile-settings-window change fixed; the old sequential
+      prompts never showed the current checkbox values on Edit. Changing
+      fields and clicking OK saves the changes and updates the menu.
+- [ ] Cancel (in either Add or Edit): closes the window without creating
+      or modifying any profile.
+- [ ] Add or Edit a profile using a name that collides with an existing
+      profile: still shows the existing duplicate-name error alert, same
+      as before this change.
 - [ ] Delete Profile: confirmation prompt appears; deleting the last
       remaining profile is refused with a clear alert instead of silently
       failing or leaving an empty menu.
