@@ -17,13 +17,18 @@ for the implementation plan.
 
 ## Status
 
-**Phase 1 (CLI pipeline) complete and tested.** The `scanix500` command-line tool is
-fully implemented with capture, blank detection, splitting, PDF assembly, and OCR
-integration. Automated tests cover all pure logic. Manual hardware tests are documented
-below and must be run against the physical iX500 to verify scanner behavior.
+**All three phases are complete.**
 
-Phase 2 (menu bar app) and Phase 3 (physical button trigger) are future work per the
-[implementation plan](docs/superpowers/plans/2026-09-13-scanix500-cli-pipeline.md).
+- **Phase 1 — CLI pipeline.** The `scanix500` command-line tool: ADF duplex capture,
+  blank-page detection, splitting on separator sheets, PDF assembly, and OCR.
+- **Phase 2 — Menu bar app.** `scanix500-menubar`: a macOS menu bar icon with one
+  item per saved profile and Add/Edit/Delete Profile management.
+- **Phase 3 — Physical button trigger.** Pressing the Scan button on the iX500 itself
+  starts a scan using the "Hardware Button" profile.
+
+Automated tests cover all pure logic. Manual hardware and UI tests are documented in the
+checklists below and must be run against the physical iX500 — hardware and GUI behavior
+is deliberately not mocked.
 
 ## Install
 
@@ -52,11 +57,16 @@ commands for that session.
 
     .venv/bin/pytest
 
-24 tests cover all pure logic (capture pairing/multi-feed/empty-ADF/odd-frame
-handling, blank detection and splitting, PDF assembly, page DPI geometry and
-OCR fallback, output path naming, and CLI wiring including destination-folder
-creation, all-blank batches and multi-feed partial-batch processing) using
-fakes and mocks — no scanner hardware required.
+59 tests cover all pure logic (capture pairing/multi-feed/empty-ADF/odd-frame
+handling, SANE device matching, blank detection and splitting, PDF assembly,
+page DPI geometry and OCR fallback, output path naming, CLI wiring including
+destination-folder creation, all-blank batches and multi-feed partial-batch
+processing, and the menu bar app's profile storage — seeding, one-time
+Hardware Button migration, lookup — plus scan-output parsing and executable
+resolution) using fakes and mocks — no scanner hardware required.
+
+Live hardware code (`button_watcher.py`) and live GUI code (`app.py`) have no
+automated tests by design; they're covered by the manual checklists below.
 
 ## Manual hardware checklist
 
@@ -154,8 +164,11 @@ Uses the same venv as above:
 
 A menu bar icon (📄) appears with one item per saved profile, plus
 Add/Edit/Delete Profile submenus. Profiles are stored at
-`~/Library/Application Support/scanix500/profiles.json` and seeded with a
-single "Default" profile on first run.
+`~/Library/Application Support/scanix500/profiles.json`. A fresh install is
+seeded with two profiles on first run: "Default" and "Hardware Button" (the
+latter is what the physical Scan button triggers — see
+[Phase 3](#phase-3-physical-scan-button-trigger) below). Both are ordinary
+profiles and can be edited or deleted like any other.
 
 ### Auto-launch at login
 
@@ -231,6 +244,21 @@ No install step beyond what Phase 2 already needs — the button watcher is
 built into the menu bar app (`scanix500-menubar`) and requires no extra
 dependency.
 
+See [`docs/superpowers/specs/2026-09-13-scanix500-button-trigger-design.md`](docs/superpowers/specs/2026-09-13-scanix500-button-trigger-design.md)
+for the design and [`docs/superpowers/plans/2026-09-13-scanix500-button-trigger.md`](docs/superpowers/plans/2026-09-13-scanix500-button-trigger.md)
+for the implementation plan.
+
+### Use
+
+With the menu bar app running, press the physical Scan button on the iX500
+(with paper loaded in the ADF): a scan starts using the "Hardware Button"
+profile, exactly as if you had clicked that profile in the menu. That profile
+is created automatically on a fresh install, and added automatically on first
+launch for an installation that predates this feature — no manual step either
+way. It is an ordinary profile: edit its destination and flags to change what
+the button does. If you delete it, the button becomes a permanent no-op — the
+profile is not re-created on the next launch.
+
 ### Manual checklist
 
 `button_watcher.py` and the `rumps.Timer` wiring in `app.py` have no
@@ -252,10 +280,16 @@ automated tests, since they're live hardware/GUI code:
 - [ ] Unplug the scanner while the menu bar app is running: confirm no
       crash, no error notification spam — the app just quietly stops
       detecting presses until it's plugged back in.
+- [ ] Press the button once: confirm exactly one scan runs, and no second
+      scan starts after it completes (proves the button's sensor state
+      clears cleanly after being read, matching the confirmed `0 → 1 → 0`
+      transition from testing).
 - [ ] Delete or rename the "Hardware Button" profile via the Delete/Edit
       Profile menu, then press the physical button: confirm it's a silent
       no-op (no crash, no notification) rather than triggering the wrong
-      profile.
+      profile. Then quit and relaunch `scanix500-menubar`: confirm the
+      deleted profile has NOT come back (the one-time migration is recorded
+      by a `.hardware_button_seeded` marker file next to `profiles.json`).
 - [ ] While the menu bar app is running and polling, confirm another
       application (e.g. VueScan, Image Capture) can still open and use the
       scanner in between polls — the device is not held open continuously.
