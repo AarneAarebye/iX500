@@ -263,11 +263,11 @@ GUI/AppKit code:
       Quit item (the menu is rebuilt from scratch on each change).
 - [ ] Quit and relaunch `scanix500-menubar`: profiles persist correctly
       from `profiles.json`.
-- [ ] With a profile named `"Default"` already present and paper loaded
-      in the ADF, `curl -i -X POST http://127.0.0.1:8765/scan/Default` —
-      the menu bar icon changes to the scanning state, the request blocks
-      until the scan completes, and the response is `200` with a JSON
-      body naming the output PDF path.
+- [ ] With paper loaded in the ADF, `curl -i -X POST
+      "http://127.0.0.1:8765/scan?skip_blank_filter=false&skip_ocr=false&split_on_blank=false"`
+      — the menu bar icon changes to the scanning state, the request
+      blocks until the scan completes, and the response is `200` with a
+      JSON body naming the output PDF path.
 - [ ] The same response's `files` field contains a `content_base64` entry
       for that PDF — decode it locally (e.g.
       `python3 -c "import base64,sys; open('out.pdf','wb').write(base64.b64decode(sys.stdin.read()))"`,
@@ -276,12 +276,19 @@ GUI/AppKit code:
       `{"service": "scanix500-bridge"}`, and the menu bar icon does
       **not** change to its scanning state (proves the probe never
       touches the scanner).
-- [ ] `curl -i -X POST http://127.0.0.1:8765/scan/Nonexistent` → `404`.
+- [ ] `curl -i -X POST "http://127.0.0.1:8765/scan?skip_blank_filter=false"`
+      (missing `skip_ocr`/`split_on_blank`) → `400`, naming both missing
+      parameters.
 - [ ] While a scan is running (from the check above, or a physical button
-      press), a second `curl -i -X POST http://127.0.0.1:8765/scan/Default`
+      press), a second `curl -i -X POST
+      "http://127.0.0.1:8765/scan?skip_blank_filter=false&skip_ocr=false&split_on_blank=false"`
       from another terminal → `409`.
-- [ ] `curl -i -X OPTIONS http://127.0.0.1:8765/scan/Default` → `204`
-      with `Access-Control-Allow-Origin: *`.
+- [ ] `curl -i -X OPTIONS http://127.0.0.1:8765/scan` → `204` with
+      `Access-Control-Allow-Origin: *`.
+- [ ] **"Set Bridge Scan Folder…"** appears in the menu; choosing a new
+      folder and then running the smoke-test `curl` above writes the
+      safety-net PDF into that new folder, not the old one — confirm by
+      checking the folder's contents before and after.
 - [ ] From Dossiary's own page (once that side exists), clicking Scan
       produces a readable response body, not an opaque CORS failure —
       `curl` above exercises none of the browser's own CORS behavior, and
@@ -352,22 +359,27 @@ dependency (`http.server` is part of the Python standard library).
 
 ### Use
 
-With the menu bar app running, `POST /scan/<profile-name>` (the profile
-name is the final URL path segment, percent-encoded) to
-`http://127.0.0.1:8765` triggers a scan using that profile, exactly as if
-you'd clicked it in the menu — and blocks until the scan finishes,
-returning a JSON body:
+With the menu bar app running, `POST /scan?skip_blank_filter=<true|false>&skip_ocr=<true|false>&split_on_blank=<true|false>`
+to `http://127.0.0.1:8765` triggers a scan using exactly those settings —
+no profile involved — and blocks until the scan finishes, returning a
+JSON body:
 
 ```json
 {"ok": true, "partial": false, "message": "/path/to/scan.pdf", "output_paths": ["/path/to/scan.pdf"], "files": [{"filename": "scan.pdf", "content_base64": "JVBERi0xLjQK..."}]}
 ```
 
-`ok: false` with `partial: true` means a partial scan (e.g. a multi-feed
-jam) still produced a usable file, named in `output_paths`. `ok: false`
-with `partial: false` means the scan failed outright. A `404` means no
-profile by that name exists; a `409` means a scan is already in progress
-(from any trigger — menu, hardware button, or another bridge request) and
-this request was rejected immediately, not queued.
+All three query parameters are required and must be exactly `true` or
+`false`; a missing or malformed one is a `400` naming which parameter(s)
+were the problem. `ok: false` with `partial: true` means a partial scan
+(e.g. a multi-feed jam) still produced a usable file, named in
+`output_paths`. `ok: false` with `partial: false` means the scan failed
+outright. A `409` means a scan is already in progress (from any trigger —
+menu, hardware button, or another bridge request) and this request was
+rejected immediately, not queued.
+
+Every bridge-triggered scan writes its safety-net copy to one shared
+folder, not a per-request destination — see **"Set Bridge Scan
+Folder…"** below.
 
 **`files` carries the same file(s) named in `output_paths`, base64-encoded**,
 so a caller (like Dossiary) doesn't need filesystem access to the
@@ -393,10 +405,9 @@ avoid an indefinite wait should apply its own client-side timeout.
 The port defaults to `8765`; override it by setting `SCANIX500_BRIDGE_PORT`
 before launching `scanix500-menubar`.
 
-**Smoke test** (with a profile named `"Default"` already configured and
-paper loaded in the ADF):
+**Smoke test** (with paper loaded in the ADF):
 
-    curl -i -X POST http://127.0.0.1:8765/scan/Default
+    curl -i -X POST "http://127.0.0.1:8765/scan?skip_blank_filter=false&skip_ocr=false&split_on_blank=false"
 
 **`GET /health`** is a separate, lightweight endpoint a caller can probe
 before ever attempting a scan — `200` with `{"service":
@@ -407,6 +418,15 @@ confirm the port manually:
 
     curl -i http://127.0.0.1:8765/health
 
+**Every bridge-triggered scan's safety-net copy is written to one shared
+folder**, configured via the menu bar app's own **"Set Bridge Scan
+Folder…"** menu item (a native folder picker — the same one Add/Edit
+Profile already uses). Defaults to `~/Documents/Scans` until you set it
+explicitly. This is deliberately not a per-request destination — the
+caller (Dossiary) already receives the scanned bytes directly in `files`
+(see above), so this folder exists purely as a local backup, not as
+something a caller picks per scan.
+
 **Trust model**: the bridge binds to `127.0.0.1` only and has no
 authentication, `Host` validation, or `Origin` validation, and it returns
 `Access-Control-Allow-Origin: *` on every response (required so Dossiary,
@@ -416,7 +436,7 @@ than "physical access to this machine": a plain cross-origin `POST`
 doesn't need CORS permission to be *sent*, only for its *response* to be
 readable, and the wildcard header here makes it readable too — so **any
 web page you visit in any browser on this machine, or any other local
-process**, can `POST` to `http://127.0.0.1:8765/scan/<profile>`, trigger a
+process**, can `POST` to `http://127.0.0.1:8765/scan`, trigger a
 real physical scan, and read back both `output_paths` (absolute
 filesystem paths that disclose your username and library location) and,
 via the `files` field, the complete contents of whatever was just
@@ -430,24 +450,12 @@ browsing on it, by anyone using it.
 
 ### Dossiary integration
 
-[Dossiary](https://github.com/AarneAarebye/Dossiary) (a separate app) has its
-own "Scan"/"Scan Multi" toolbar buttons that call this bridge. They expect
-two specific, fixed profile names to already exist:
-
-- **`Dossiary Scan`** — an ordinary profile.
-- **`Dossiary Scan Multi`** — a profile with "Split on blank separator
-  sheets?" answered Yes.
-
-Create both once via **Add Profile…** in the menu bar app. **Once
-Dossiary's own auto-connect support ships** (it will read the `files`
-field described above and write the scan directly into whichever
-library's `inbox/` is currently open), `destination` will no longer need
-to point at any particular Dossiary library — it'll become a local
-safety-net copy, and you'll be able to point it anywhere you like.
-**Until then, keep `destination` set to your Dossiary library's actual
-`inbox/` folder** (e.g. `/path/to/your/library/inbox`) — the
-currently-shipped Dossiary ignores `files` entirely and still relies on
-its own "Check inbox" flow finding the file already sitting there. These
-names are still a fixed contract Dossiary's own code depends on;
-renaming either profile breaks the integration until Dossiary's own
-setting is updated to match, or the profile is renamed back.
+[Dossiary](https://github.com/AarneAarebye/Dossiary) (a separate app) has
+its own "Scan"/"Scan Multi" toolbar buttons that call this bridge
+directly with the settings each button wants — there's no profile to
+create or name to keep in sync anymore. Both Dossiary's auto-connect
+support (it health-probes the bridge and reads `files` to write the scan
+into whichever library's `inbox/` is currently open) and this
+parameterized endpoint already ship, so nothing here needs manual setup
+beyond, optionally, changing **"Set Bridge Scan Folder…"** if you don't
+want the safety-net copy landing in `~/Documents/Scans`.

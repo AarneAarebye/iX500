@@ -43,24 +43,22 @@ TDD steps.
   only the small `ScanixMenuBarApp.trigger()` integration in `app.py` is
   thread-marshaling/AppKit-dependent code, following this repo's existing
   "hardware/live-GUI code is manually verified, not mocked" precedent.
-  Fixed, two-way contract with Dossiary: profiles named exactly
-  `"Dossiary Scan"`/`"Dossiary Scan Multi"` must exist for its toolbar
-  buttons to work — see README.md's own "Dossiary integration" section.
-- **Extended 2026-09-16** (see the design spec in the sibling Dossiary
-  repo, `docs/superpowers/specs/2026-09-16-scan-bridge-auto-connect-design.md`
-  under `/Users/aarneaarebye/Projects/Paperless/Dossiary`; this repo's own
-  plan is `docs/superpowers/plans/2026-09-16-scan-bridge-auto-connect.md`):
-  the bridge gained a `GET /health` endpoint — a lightweight reachability
-  probe, separate from the scan-triggering `POST /scan/<profile>`, so a
-  caller can check the bridge is there without ever risking a real scan
-  against an unknown port — and the `POST /scan/<profile>` response
-  gained a `files` field: each file named in `output_paths` is also read
-  back and base64-encoded into the response, so a caller like Dossiary
-  receives the scanned bytes directly over the connection instead of
-  relying on `destination` matching a location it can read. `destination`
-  remains required (the scan pipeline still needs somewhere to write) but
-  is now purely a local safety-net copy — it no longer needs to point at
-  any particular Dossiary library's `inbox/`.
+  **Extended 2026-09-16 (parameterized scan)** — see
+  `docs/superpowers/specs/2026-09-16-scan-bridge-parameterized-scan-design.md`
+  in the sibling Dossiary repo, plan
+  `docs/superpowers/plans/2026-09-16-scan-bridge-parameterized-scan.md`:
+  `POST /scan/<profile-name>`'s lookup is gone. Dossiary now sends its
+  scan settings directly as query parameters
+  (`skip_blank_filter`/`skip_ocr`/`split_on_blank`, each required and
+  exactly `true`/`false`), and `route_scan_request()` builds an ephemeral
+  `Profile` from them rather than looking one up — no more requirement
+  that `"Dossiary Scan"`/`"Dossiary Scan Multi"` profiles exist at all.
+  `profiles.json`, the manual dropdown, and the reserved `"Hardware
+  Button"` profile are untouched. The safety-net destination for a
+  bridge-triggered scan now comes from a small, separate,
+  menu-editable setting (`bridge_settings.py`), not a profile's own
+  `destination` field — see README.md's own "Set Bridge Scan Folder…"
+  note.
 
 ## Project phasing
 
