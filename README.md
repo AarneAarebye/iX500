@@ -378,6 +378,9 @@ folder as an unconditional safety net *before* this response is built,
 regardless of whether the caller ever reads `files`. A path that can no
 longer be read by the time the response is built (removed, permissions)
 is simply omitted from `files` rather than failing the whole response.
+Because of that, `files` may be shorter than `output_paths` — don't
+assume `files[i]` corresponds to `output_paths[i]`; match entries by
+`filename` instead.
 
 **A bridge request blocks until the scan actually resolves — there is no
 server-side timeout.** It will also block for as long as any modal dialog
@@ -414,8 +417,10 @@ doesn't need CORS permission to be *sent*, only for its *response* to be
 readable, and the wildcard header here makes it readable too — so **any
 web page you visit in any browser on this machine, or any other local
 process**, can `POST` to `http://127.0.0.1:8765/scan/<profile>`, trigger a
-real physical scan, and read back `output_paths` (absolute filesystem
-paths that disclose your username and library location). This isn't a
+real physical scan, and read back both `output_paths` (absolute
+filesystem paths that disclose your username and library location) and,
+via the `files` field, the complete contents of whatever was just
+scanned — not just its location, but the actual document. This isn't a
 flaw to fix here — binding to loopback with no auth is a deliberate
 design choice, and Dossiary's `file://`-origin requirement is exactly
 what rules out a narrower CORS allow-list — but don't run this on a
@@ -433,13 +438,16 @@ two specific, fixed profile names to already exist:
 - **`Dossiary Scan Multi`** — a profile with "Split on blank separator
   sheets?" answered Yes.
 
-Create both once via **Add Profile…** in the menu bar app. Their
-`destination` folder no longer needs to point at any particular Dossiary
-library — Dossiary receives the scanned file directly over the bridge
-connection (see the `files` field above) and writes it into whichever
-library's `inbox/` is currently open, so `destination` here is just a
-local safety-net copy; point it anywhere you like (your Desktop, a
-dedicated scans folder — it's never read by Dossiary). These names are
-still a fixed contract Dossiary's own code depends on; renaming either
-profile breaks the integration until Dossiary's own setting is updated to
-match, or the profile is renamed back.
+Create both once via **Add Profile…** in the menu bar app. **Once
+Dossiary's own auto-connect support ships** (it will read the `files`
+field described above and write the scan directly into whichever
+library's `inbox/` is currently open), `destination` will no longer need
+to point at any particular Dossiary library — it'll become a local
+safety-net copy, and you'll be able to point it anywhere you like.
+**Until then, keep `destination` set to your Dossiary library's actual
+`inbox/` folder** (e.g. `/path/to/your/library/inbox`) — the
+currently-shipped Dossiary ignores `files` entirely and still relies on
+its own "Check inbox" flow finding the file already sitting there. These
+names are still a fixed contract Dossiary's own code depends on;
+renaming either profile breaks the integration until Dossiary's own
+setting is updated to match, or the profile is renamed back.
