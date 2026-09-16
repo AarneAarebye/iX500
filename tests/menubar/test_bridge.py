@@ -233,6 +233,22 @@ def test_bridge_server_round_trip_missing_params_is_400(unused_tcp_port):
     assert "skip_blank_filter" in body["error"]
 
 
+def test_bridge_server_round_trip_old_profile_path_is_404(unused_tcp_port):
+    # The old POST /scan/<profile-name> endpoint is removed entirely, not
+    # kept alongside the new parameterized one -- a request to that old
+    # path shape must 404, never resolve to anything. This is exactly the
+    # path the currently-shipped Dossiary still calls as of this branch,
+    # so a regression here would silently break that integration.
+    server = start_bridge_server(lambda: "/tmp/scans", FakeScanTrigger(), port=unused_tcp_port)
+    try:
+        status, body = _post(f"http://127.0.0.1:{unused_tcp_port}/scan/Dossiary%20Scan")
+    finally:
+        server.shutdown()
+
+    assert status == 404
+    assert body == {"error": "not found"}
+
+
 def test_bridge_server_round_trip_busy_is_409(unused_tcp_port):
     trigger = FakeScanTrigger(raises=ScanBusyError())
     server = start_bridge_server(lambda: "/tmp/scans", trigger, port=unused_tcp_port)
