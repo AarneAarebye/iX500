@@ -8,9 +8,9 @@ from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Protocol
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, urlsplit
 
-from scanix500.menubar.profiles import Profile, find_profile
+from scanix500.menubar.profiles import Profile
 from scanix500.menubar.runner import ScanResult
 
 DEFAULT_PORT = 8765
@@ -40,9 +40,8 @@ def _encode_files(output_paths: list[str]) -> list[dict]:
     match entries by filename, not by index. A path that can no longer be
     read (removed, permissions) is skipped rather than raising -- the
     response still carries whatever files it could read, and
-    output_paths / the on-disk safety-net copy in the profile's own
-    destination folder remain the authoritative record regardless (see
-    the 2026-09-16 auto-connect design spec)."""
+    output_paths / the on-disk safety-net copy in the destination folder
+    remain the authoritative record regardless."""
     files = []
     for path in output_paths:
         try:
@@ -53,14 +52,39 @@ def _encode_files(output_paths: list[str]) -> list[dict]:
     return files
 
 
-def route_scan_request(profiles: list[Profile], name: str, trigger: ScanTrigger) -> tuple[int, dict]:
-    """Pure dispatch: look up `name` in `profiles`, run it via `trigger`,
-    shape the response. No HTTP-specific code and no threading here --
-    Task 2's HTTP handler and Task 3's ScanixMenuBarApp.trigger() are the
-    only two things that need to know this exists."""
-    profile = find_profile(profiles, name)
-    if profile is None:
-        return 404, {"error": f"no profile named {name!r}"}
+def _parse_bool_param(params: dict[str, str], name: str) -> bool | None:
+    """Returns True/False for a query parameter whose value is exactly
+    the literal string 'true' or 'false'; None if the parameter is
+    missing or holds any other value, so the caller can report exactly
+    which parameter(s) were invalid rather than a generic failure."""
+    value = params.get(name)
+    if value not in ("true", "false"):
+        return None
+    return value == "true"
+
+
+def route_scan_request(destination: str, params: dict[str, str], trigger: ScanTrigger) -> tuple[int, dict]:
+    """Pure dispatch: validate the three required boolean scan parameters
+    (skip_blank_filter, skip_ocr, split_on_blank -- each must be exactly
+    'true' or 'false'), build an ephemeral Profile from them plus the
+    already-resolved destination folder, run it via trigger, shape the
+    response. No HTTP-specific code and no threading here. This replaces
+    the old profile-name lookup entirely -- see the 2026-09-16
+    parameterized-scan design spec. The constructed Profile's own `name`
+    ("Dossiary Bridge Scan") is never persisted or shown in any menu; it
+    exists only because Profile requires a name field."""
+    parsed = {name: _parse_bool_param(params, name) for name in ("skip_blank_filter", "skip_ocr", "split_on_blank")}
+    missing = [name for name, value in parsed.items() if value is None]
+    if missing:
+        return 400, {"error": f"missing or invalid parameter(s): {', '.join(missing)} (each must be 'true' or 'false')"}
+
+    profile = Profile(
+        name="Dossiary Bridge Scan",
+        destination=destination,
+        skip_blank_filter=parsed["skip_blank_filter"],
+        skip_ocr=parsed["skip_ocr"],
+        split_on_blank=parsed["split_on_blank"],
+    )
     try:
         result = trigger.trigger(profile)
     except ScanBusyError:
@@ -75,12 +99,13 @@ def route_scan_request(profiles: list[Profile], name: str, trigger: ScanTrigger)
 
 
 def make_handler_class(
-    get_profiles: Callable[[], list[Profile]], trigger: ScanTrigger
+    get_destination: Callable[[], str], trigger: ScanTrigger
 ) -> type[BaseHTTPRequestHandler]:
-    """Builds a BaseHTTPRequestHandler bound to a live profiles getter (a
-    zero-arg callable, not a static list -- profiles.json can change via
-    Add/Edit/Delete Profile while the bridge is running, and every request
-    must see the current list) and a ScanTrigger."""
+    """Builds a BaseHTTPRequestHandler bound to a live destination-folder
+    getter (a zero-arg callable, not a static string -- the "Set Bridge
+    Scan Folder..." setting can change via the menu while the bridge is
+    running, and every request must see the current value) and a
+    ScanTrigger."""
 
     class Handler(BaseHTTPRequestHandler):
         def _send_json(self, status: int, body: dict) -> None:
@@ -141,14 +166,17 @@ def make_handler_class(
             # stays the default HTTP/1.0 (each connection closes after one
             # response, so there's no leftover unread body to corrupt a
             # later request on the same connection); revisit if this is
-            # ever bumped to HTTP/1.1 with request bodies in play.
-            prefix = "/scan/"
+            # ever bumped to HTTP/1.1 with request bodies in play. The
+            # scan's own parameters live entirely in the query string, not
+            # the body, so this constraint is unaffected by the
+            # parameterized-scan change.
             path = urlsplit(self.path).path
-            if not path.startswith(prefix):
+            if path != "/scan":
                 self._send_json(404, {"error": "not found"})
                 return
-            name = unquote(path[len(prefix):])
-            status, body = route_scan_request(get_profiles(), name, trigger)
+            query = urlsplit(self.path).query
+            params = {key: values[0] for key, values in parse_qs(query).items()}
+            status, body = route_scan_request(get_destination(), params, trigger)
             self._send_json(status, body)
 
         def log_message(self, format: str, *args: object) -> None:
@@ -160,13 +188,13 @@ def make_handler_class(
 
 
 def start_bridge_server(
-    get_profiles: Callable[[], list[Profile]], trigger: ScanTrigger, port: int | None = None
+    get_destination: Callable[[], str], trigger: ScanTrigger, port: int | None = None
 ) -> ThreadingHTTPServer:
     """Starts the bridge listening on 127.0.0.1:<port> in a daemon thread
     and returns the live server. port resolution order: this parameter (if
     given) > SCANIX500_BRIDGE_PORT env var > DEFAULT_PORT."""
     resolved_port = port if port is not None else int(os.environ.get("SCANIX500_BRIDGE_PORT", DEFAULT_PORT))
-    handler_cls = make_handler_class(get_profiles, trigger)
+    handler_cls = make_handler_class(get_destination, trigger)
     server = ThreadingHTTPServer(("127.0.0.1", resolved_port), handler_cls)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
