@@ -268,6 +268,14 @@ GUI/AppKit code:
       the menu bar icon changes to the scanning state, the request blocks
       until the scan completes, and the response is `200` with a JSON
       body naming the output PDF path.
+- [ ] The same response's `files` field contains a `content_base64` entry
+      for that PDF — decode it locally (e.g.
+      `python3 -c "import base64,sys; open('out.pdf','wb').write(base64.b64decode(sys.stdin.read()))"`,
+      piping the field's value in) and confirm it opens as a valid PDF.
+- [ ] `curl -i http://127.0.0.1:8765/health` → `200` with
+      `{"service": "scanix500-bridge"}`, and the menu bar icon does
+      **not** change to its scanning state (proves the probe never
+      touches the scanner).
 - [ ] `curl -i -X POST http://127.0.0.1:8765/scan/Nonexistent` → `404`.
 - [ ] While a scan is running (from the check above, or a physical button
       press), a second `curl -i -X POST http://127.0.0.1:8765/scan/Default`
@@ -351,7 +359,7 @@ you'd clicked it in the menu — and blocks until the scan finishes,
 returning a JSON body:
 
 ```json
-{"ok": true, "partial": false, "message": "/path/to/scan.pdf", "output_paths": ["/path/to/scan.pdf"]}
+{"ok": true, "partial": false, "message": "/path/to/scan.pdf", "output_paths": ["/path/to/scan.pdf"], "files": [{"filename": "scan.pdf", "content_base64": "JVBERi0xLjQK..."}]}
 ```
 
 `ok: false` with `partial: true` means a partial scan (e.g. a multi-feed
@@ -360,6 +368,16 @@ with `partial: false` means the scan failed outright. A `404` means no
 profile by that name exists; a `409` means a scan is already in progress
 (from any trigger — menu, hardware button, or another bridge request) and
 this request was rejected immediately, not queued.
+
+**`files` carries the same file(s) named in `output_paths`, base64-encoded**,
+so a caller (like Dossiary) doesn't need filesystem access to the
+destination folder at all — it can decode each `content_base64` entry and
+write the bytes wherever it needs them. `output_paths` is still the
+on-disk record: every file is written to the profile's own `destination`
+folder as an unconditional safety net *before* this response is built,
+regardless of whether the caller ever reads `files`. A path that can no
+longer be read by the time the response is built (removed, permissions)
+is simply omitted from `files` rather than failing the whole response.
 
 **A bridge request blocks until the scan actually resolves — there is no
 server-side timeout.** It will also block for as long as any modal dialog
@@ -376,6 +394,15 @@ before launching `scanix500-menubar`.
 paper loaded in the ADF):
 
     curl -i -X POST http://127.0.0.1:8765/scan/Default
+
+**`GET /health`** is a separate, lightweight endpoint a caller can probe
+before ever attempting a scan — `200` with `{"service":
+"scanix500-bridge"}` immediately, no busy-guard interaction, no scanner
+involvement. It exists so a client can auto-detect whether the bridge is
+running on the default port before falling back to asking the person to
+confirm the port manually:
+
+    curl -i http://127.0.0.1:8765/health
 
 **Trust model**: the bridge binds to `127.0.0.1` only and has no
 authentication, `Host` validation, or `Origin` validation, and it returns
@@ -406,10 +433,13 @@ two specific, fixed profile names to already exist:
 - **`Dossiary Scan Multi`** — a profile with "Split on blank separator
   sheets?" answered Yes.
 
-Create both once via **Add Profile…** in the menu bar app, with their
-destination set to your Dossiary library's actual `inbox/` folder (e.g.
-`/path/to/your/library/inbox`) — Dossiary's own "Check inbox" flow picks
-up whatever lands there. These names are a fixed contract Dossiary's own
-code depends on; renaming either profile breaks the integration until
-Dossiary's own setting is updated to match, or the profile is renamed
-back.
+Create both once via **Add Profile…** in the menu bar app. Their
+`destination` folder no longer needs to point at any particular Dossiary
+library — Dossiary receives the scanned file directly over the bridge
+connection (see the `files` field above) and writes it into whichever
+library's `inbox/` is currently open, so `destination` here is just a
+local safety-net copy; point it anywhere you like (your Desktop, a
+dedicated scans folder — it's never read by Dossiary). These names are
+still a fixed contract Dossiary's own code depends on; renaming either
+profile breaks the integration until Dossiary's own setting is updated to
+match, or the profile is renamed back.
