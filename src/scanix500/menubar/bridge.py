@@ -97,10 +97,21 @@ def make_handler_class(
         def do_OPTIONS(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler's own naming
             self.send_response(204)
             self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "*")
             self.send_header("Content-Length", "0")
             self.end_headers()
+
+        def do_GET(self) -> None:  # noqa: N802
+            # A separate, deliberately trivial route from do_POST's scan
+            # trigger -- this must never touch trigger/self._scanning, so a
+            # caller (Dossiary) can probe "is the bridge here" without any
+            # risk of firing a real scan at an unknown port.
+            path = urlsplit(self.path).path
+            if path == "/health":
+                self._send_json(200, {"service": "scanix500-bridge"})
+                return
+            self._send_json(404, {"error": "not found"})
 
         def do_POST(self) -> None:  # noqa: N802
             # Never reads self.rfile -- safe only because protocol_version

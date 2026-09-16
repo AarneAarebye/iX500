@@ -181,27 +181,6 @@ def test_bridge_server_strips_query_string_from_profile_name(unused_tcp_port):
     assert trigger.called_with == profiles[0]
 
 
-def test_bridge_server_unhandled_method_still_has_cors_header(unused_tcp_port):
-    # Every response -- success or error, including methods this bridge
-    # never explicitly handles (GET, PUT, ...) -- must carry
-    # Access-Control-Allow-Origin, not just the do_POST/do_OPTIONS paths.
-    server = start_bridge_server(lambda: [], FakeScanTrigger(), port=unused_tcp_port)
-    try:
-        req = urllib.request.Request(f"http://127.0.0.1:{unused_tcp_port}/scan/Default", method="GET")
-        try:
-            with urllib.request.urlopen(req) as resp:
-                status = resp.status
-                headers = resp.headers
-        except urllib.error.HTTPError as e:
-            status = e.code
-            headers = e.headers
-    finally:
-        server.shutdown()
-
-    assert status == 501
-    assert headers["Access-Control-Allow-Origin"] == "*"
-
-
 def test_bridge_server_reads_profiles_live_not_a_snapshot(unused_tcp_port):
     # get_profiles is called fresh on every request, not captured once at
     # start_bridge_server() time -- proves a profile added via Add Profile
@@ -216,3 +195,73 @@ def test_bridge_server_reads_profiles_live_not_a_snapshot(unused_tcp_port):
         assert status == 200
     finally:
         server.shutdown()
+
+
+def test_bridge_server_health_endpoint_returns_200(unused_tcp_port):
+    trigger = FakeScanTrigger()
+    server = start_bridge_server(lambda: [], trigger, port=unused_tcp_port)
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{unused_tcp_port}/health", method="GET")
+        with urllib.request.urlopen(req) as resp:
+            status = resp.status
+            body = json.loads(resp.read())
+            headers = resp.headers
+    finally:
+        server.shutdown()
+
+    assert status == 200
+    assert body == {"service": "scanix500-bridge"}
+    assert headers["Access-Control-Allow-Origin"] == "*"
+    assert trigger.called_with is None
+
+
+def test_bridge_server_get_unknown_path_is_404(unused_tcp_port):
+    server = start_bridge_server(lambda: [], FakeScanTrigger(), port=unused_tcp_port)
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{unused_tcp_port}/scan/Default", method="GET")
+        try:
+            with urllib.request.urlopen(req) as resp:
+                status = resp.status
+                body = json.loads(resp.read())
+        except urllib.error.HTTPError as e:
+            status = e.code
+            body = json.loads(e.read())
+    finally:
+        server.shutdown()
+
+    assert status == 404
+    assert body == {"error": "not found"}
+
+
+def test_bridge_server_options_preflight_advertises_get(unused_tcp_port):
+    server = start_bridge_server(lambda: [], FakeScanTrigger(), port=unused_tcp_port)
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{unused_tcp_port}/health", method="OPTIONS")
+        with urllib.request.urlopen(req) as resp:
+            assert resp.status == 204
+            assert "GET" in resp.headers["Access-Control-Allow-Methods"]
+    finally:
+        server.shutdown()
+
+
+def test_bridge_server_unhandled_method_still_has_cors_header(unused_tcp_port):
+    # GET is now explicitly handled by do_GET (see /health and its 404
+    # fallback below) -- use PUT here instead, a method this bridge
+    # genuinely never implements, to keep testing
+    # BaseHTTPRequestHandler's own unhandled-method fallback (the
+    # send_error override above), not do_GET's own routing.
+    server = start_bridge_server(lambda: [], FakeScanTrigger(), port=unused_tcp_port)
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{unused_tcp_port}/scan/Default", method="PUT")
+        try:
+            with urllib.request.urlopen(req) as resp:
+                status = resp.status
+                headers = resp.headers
+        except urllib.error.HTTPError as e:
+            status = e.code
+            headers = e.headers
+    finally:
+        server.shutdown()
+
+    assert status == 501
+    assert headers["Access-Control-Allow-Origin"] == "*"
