@@ -44,6 +44,8 @@ def test_init_survives_bridge_startup_oserror():
     with (
         patch("scanix500.menubar.app.load_profiles", return_value=[Profile(name="Default", destination="/tmp/scans")]),
         patch("scanix500.menubar.app.default_profiles_path", return_value="/tmp/scanix500-test-profiles.json"),
+        patch("scanix500.menubar.app.load_bridge_destination", return_value="/tmp/scans"),
+        patch("scanix500.menubar.app.default_bridge_destination_path", return_value="/tmp/scanix500-test-bridge-destination.txt"),
         patch("scanix500.menubar.app.start_bridge_server", side_effect=OSError("Address already in use")),
         patch("scanix500.menubar.app.rumps.notification") as notification,
     ):
@@ -63,6 +65,8 @@ def test_init_survives_bridge_startup_valueerror():
     with (
         patch("scanix500.menubar.app.load_profiles", return_value=[Profile(name="Default", destination="/tmp/scans")]),
         patch("scanix500.menubar.app.default_profiles_path", return_value="/tmp/scanix500-test-profiles.json"),
+        patch("scanix500.menubar.app.load_bridge_destination", return_value="/tmp/scans"),
+        patch("scanix500.menubar.app.default_bridge_destination_path", return_value="/tmp/scanix500-test-bridge-destination.txt"),
         patch("scanix500.menubar.app.start_bridge_server", side_effect=ValueError("invalid literal for int()")),
         patch("scanix500.menubar.app.rumps.notification") as notification,
     ):
@@ -70,3 +74,53 @@ def test_init_survives_bridge_startup_valueerror():
 
     assert app._bridge_server is None
     assert notification.called
+
+
+def test_set_bridge_destination_saves_chosen_folder():
+    from scanix500.menubar.app import ScanixMenuBarApp
+
+    app = ScanixMenuBarApp.__new__(ScanixMenuBarApp)  # skip rumps.App.__init__/AppKit setup
+    app._scanning = False
+    app.bridge_destination = "/tmp/old-scans"
+    app.bridge_destination_path = "/tmp/scanix500-test-bridge-destination.txt"
+
+    with (
+        patch("scanix500.menubar.app.pick_folder", return_value="/tmp/new-scans") as pick,
+        patch("scanix500.menubar.app.save_bridge_destination") as save,
+    ):
+        app._set_bridge_destination(None)
+
+    pick.assert_called_once_with("/tmp/old-scans")
+    save.assert_called_once_with("/tmp/scanix500-test-bridge-destination.txt", "/tmp/new-scans")
+    assert app.bridge_destination == "/tmp/new-scans"
+
+
+def test_set_bridge_destination_does_nothing_on_cancel():
+    from scanix500.menubar.app import ScanixMenuBarApp
+
+    app = ScanixMenuBarApp.__new__(ScanixMenuBarApp)
+    app._scanning = False
+    app.bridge_destination = "/tmp/old-scans"
+    app.bridge_destination_path = "/tmp/scanix500-test-bridge-destination.txt"
+
+    with (
+        patch("scanix500.menubar.app.pick_folder", return_value=None),
+        patch("scanix500.menubar.app.save_bridge_destination") as save,
+    ):
+        app._set_bridge_destination(None)
+
+    save.assert_not_called()
+    assert app.bridge_destination == "/tmp/old-scans"
+
+
+def test_set_bridge_destination_does_nothing_while_scanning():
+    from scanix500.menubar.app import ScanixMenuBarApp
+
+    app = ScanixMenuBarApp.__new__(ScanixMenuBarApp)
+    app._scanning = True
+    app.bridge_destination = "/tmp/old-scans"
+
+    with patch("scanix500.menubar.app.pick_folder") as pick:
+        app._set_bridge_destination(None)
+
+    pick.assert_not_called()

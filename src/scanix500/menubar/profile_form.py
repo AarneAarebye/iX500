@@ -22,7 +22,7 @@ WINDOW_WIDTH = 420
 WINDOW_HEIGHT = 220
 
 
-def _pick_folder(default_path: str) -> str | None:
+def pick_folder(default_path: str) -> str | None:
     panel = NSOpenPanel.openPanel()
     panel.setCanChooseDirectories_(True)
     panel.setCanChooseFiles_(False)
@@ -141,7 +141,7 @@ class _ProfileFormDelegate(NSObject):
         self._update_ok_enabled()
 
     def chooseClicked_(self, _sender) -> None:
-        chosen = _pick_folder(self.destination)
+        chosen = pick_folder(self.destination)
         if chosen is not None:
             self.destination = chosen
             self.destination_field.setStringValue_(chosen)

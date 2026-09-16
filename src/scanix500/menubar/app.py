@@ -9,8 +9,13 @@ import rumps
 from PyObjCTools import AppHelper
 
 from scanix500.menubar.bridge import ScanBusyError, start_bridge_server
+from scanix500.menubar.bridge_settings import (
+    default_bridge_destination_path,
+    load_bridge_destination,
+    save_bridge_destination,
+)
 from scanix500.menubar.button_watcher import button_pressed, resolve_device_name
-from scanix500.menubar.profile_form import show_profile_form
+from scanix500.menubar.profile_form import pick_folder, show_profile_form
 from scanix500.menubar.profiles import (
     HARDWARE_BUTTON_PROFILE_NAME,
     Profile,
@@ -42,6 +47,8 @@ class ScanixMenuBarApp(rumps.App):
         super().__init__("scanix500", title=IDLE_TITLE)
         self.profiles_path = default_profiles_path()
         self.profiles = load_profiles(self.profiles_path)
+        self.bridge_destination_path = default_bridge_destination_path()
+        self.bridge_destination = load_bridge_destination(self.bridge_destination_path)
         self._scanning = False
         # See _rebuild_menu's comment on self._app_started.
         self._app_started = False
@@ -56,17 +63,17 @@ class ScanixMenuBarApp(rumps.App):
         self._button_timer = rumps.Timer(self._poll_button, 1.5)
         self._button_timer.start()
         # Embedded HTTP bridge (see bridge.py) -- lets an external caller
-        # (Dossiary's browser JS) trigger a scan by profile name over
-        # local HTTP. self.profiles is read fresh on every bridge request
-        # (via the lambda), not snapshotted here, so Add/Edit/Delete
-        # Profile while the bridge is running is picked up immediately.
-        # The bridge is an optional enhancement, not core functionality --
-        # a taken port (OSError) or a non-numeric SCANIX500_BRIDGE_PORT
-        # (ValueError) must never take the whole menu bar app down with it,
-        # since a launchd-launched process has nowhere useful for an
-        # uncaught traceback to go.
+        # (Dossiary's browser JS) trigger a scan with its own parameters
+        # over local HTTP. self.bridge_destination is read fresh on every
+        # bridge request (via the lambda), not snapshotted here, so
+        # changing "Set Bridge Scan Folder…" while the bridge is running
+        # is picked up immediately. The bridge is an optional enhancement,
+        # not core functionality -- a taken port (OSError) or a
+        # non-numeric SCANIX500_BRIDGE_PORT (ValueError) must never take
+        # the whole menu bar app down with it, since a launchd-launched
+        # process has nowhere useful for an uncaught traceback to go.
         try:
-            self._bridge_server = start_bridge_server(lambda: self.profiles, self)
+            self._bridge_server = start_bridge_server(lambda: self.bridge_destination, self)
         except (OSError, ValueError) as e:
             self._bridge_server = None
             rumps.notification(title="Scan bridge unavailable", subtitle="", message=str(e))
@@ -87,6 +94,9 @@ class ScanixMenuBarApp(rumps.App):
         for profile in self.profiles:
             delete_menu.add(rumps.MenuItem(profile.name, callback=self._make_delete_handler(profile.name)))
         self.menu.add(delete_menu)
+
+        self.menu.add(rumps.separator)
+        self.menu.add(rumps.MenuItem("Set Bridge Scan Folder…", callback=self._set_bridge_destination))
 
         # rumps appends the Quit item itself, but only once, inside
         # initializeStatusBar() — which runs at the end of App.run(), after
@@ -226,6 +236,15 @@ class ScanixMenuBarApp(rumps.App):
         self._scanning = False
         self.title = IDLE_TITLE
         rumps.notification(title=notification_title(result), subtitle="", message=result.message)
+
+    def _set_bridge_destination(self, _sender):
+        if self._scanning:
+            return
+        chosen = pick_folder(self.bridge_destination)
+        if chosen is None:
+            return
+        self.bridge_destination = chosen
+        save_bridge_destination(self.bridge_destination_path, chosen)
 
     def _add_profile(self, _sender):
         if self._scanning:
