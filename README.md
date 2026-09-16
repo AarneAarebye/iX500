@@ -385,8 +385,8 @@ Folder…"** below.
 so a caller (like Dossiary) doesn't need filesystem access to the
 destination folder at all — it can decode each `content_base64` entry and
 write the bytes wherever it needs them. `output_paths` is still the
-on-disk record: every file is written to the profile's own `destination`
-folder as an unconditional safety net *before* this response is built,
+on-disk record: every file is written to the configured Bridge Scan
+Folder as an unconditional safety net *before* this response is built,
 regardless of whether the caller ever reads `files`. A path that can no
 longer be read by the time the response is built (removed, permissions)
 is simply omitted from `files` rather than failing the whole response.

@@ -43,7 +43,22 @@ TDD steps.
   only the small `ScanixMenuBarApp.trigger()` integration in `app.py` is
   thread-marshaling/AppKit-dependent code, following this repo's existing
   "hardware/live-GUI code is manually verified, not mocked" precedent.
-  **Extended 2026-09-16 (parameterized scan)** — see
+- **Extended 2026-09-16** (see the design spec in the sibling Dossiary
+  repo, `docs/superpowers/specs/2026-09-16-scan-bridge-auto-connect-design.md`
+  under `/Users/aarneaarebye/Projects/Paperless/Dossiary`; this repo's own
+  plan is `docs/superpowers/plans/2026-09-16-scan-bridge-auto-connect.md`):
+  the bridge gained a `GET /health` endpoint — a lightweight reachability
+  probe, separate from the scan-triggering `POST /scan/<profile>`, so a
+  caller can check the bridge is there without ever risking a real scan
+  against an unknown port — and the `POST /scan/<profile>` response
+  gained a `files` field: each file named in `output_paths` is also read
+  back and base64-encoded into the response, so a caller like Dossiary
+  receives the scanned bytes directly over the connection instead of
+  relying on `destination` matching a location it can read. `destination`
+  remains required (the scan pipeline still needs somewhere to write) but
+  is now purely a local safety-net copy — it no longer needs to point at
+  any particular Dossiary library's `inbox/`.
+- **Extended 2026-09-16 (parameterized scan)** — see
   `docs/superpowers/specs/2026-09-16-scan-bridge-parameterized-scan-design.md`
   in the sibling Dossiary repo, plan
   `docs/superpowers/plans/2026-09-16-scan-bridge-parameterized-scan.md`:
