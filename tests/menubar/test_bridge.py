@@ -1,3 +1,4 @@
+import base64
 import json
 import socket
 import threading
@@ -68,9 +69,11 @@ def test_route_scan_request_busy_returns_409():
     assert "already in progress" in body["error"]
 
 
-def test_route_scan_request_success_returns_200_with_scan_result_shape():
-    profiles = [Profile(name="Dossiary Scan", destination="/tmp/scans")]
-    result = ScanResult(ok=True, partial=False, message="/tmp/scans/scan_1.pdf", output_paths=["/tmp/scans/scan_1.pdf"])
+def test_route_scan_request_success_returns_200_with_scan_result_shape(tmp_path):
+    scan_file = tmp_path / "scan_1.pdf"
+    scan_file.write_bytes(b"%PDF-1.4 fake pdf bytes")
+    profiles = [Profile(name="Dossiary Scan", destination=str(tmp_path))]
+    result = ScanResult(ok=True, partial=False, message=str(scan_file), output_paths=[str(scan_file)])
     trigger = FakeScanTrigger(result=result)
 
     status, body = route_scan_request(profiles, "Dossiary Scan", trigger)
@@ -79,10 +82,72 @@ def test_route_scan_request_success_returns_200_with_scan_result_shape():
     assert body == {
         "ok": True,
         "partial": False,
-        "message": "/tmp/scans/scan_1.pdf",
-        "output_paths": ["/tmp/scans/scan_1.pdf"],
+        "message": str(scan_file),
+        "output_paths": [str(scan_file)],
+        "files": [
+            {
+                "filename": "scan_1.pdf",
+                "content_base64": base64.b64encode(b"%PDF-1.4 fake pdf bytes").decode("ascii"),
+            }
+        ],
     }
     assert trigger.called_with == profiles[0]
+
+
+def test_route_scan_request_unreadable_output_path_is_skipped_in_files():
+    # A path in output_paths that can no longer be read (removed between
+    # the scan finishing and this call, permissions, etc.) must not raise
+    # -- it's just omitted from `files`. output_paths itself is
+    # untouched, and the safety-net copy in the profile's own destination
+    # folder remains the record of truth regardless.
+    profiles = [Profile(name="Dossiary Scan", destination="/tmp/scans")]
+    result = ScanResult(ok=True, partial=False, message="ok", output_paths=["/tmp/scans/does-not-exist.pdf"])
+    trigger = FakeScanTrigger(result=result)
+
+    status, body = route_scan_request(profiles, "Dossiary Scan", trigger)
+
+    assert status == 200
+    assert body["output_paths"] == ["/tmp/scans/does-not-exist.pdf"]
+    assert body["files"] == []
+
+
+def test_route_scan_request_multi_file_result_encodes_every_file(tmp_path):
+    scan_1 = tmp_path / "scan_1.pdf"
+    scan_2 = tmp_path / "scan_2.pdf"
+    scan_1.write_bytes(b"first document")
+    scan_2.write_bytes(b"second document")
+    profiles = [Profile(name="Dossiary Scan Multi", destination=str(tmp_path), split_on_blank=True)]
+    result = ScanResult(ok=True, partial=False, message="2 documents", output_paths=[str(scan_1), str(scan_2)])
+    trigger = FakeScanTrigger(result=result)
+
+    status, body = route_scan_request(profiles, "Dossiary Scan Multi", trigger)
+
+    assert status == 200
+    assert body["files"] == [
+        {"filename": "scan_1.pdf", "content_base64": base64.b64encode(b"first document").decode("ascii")},
+        {"filename": "scan_2.pdf", "content_base64": base64.b64encode(b"second document").decode("ascii")},
+    ]
+
+
+def test_bridge_server_round_trip_delivers_file_bytes(tmp_path, unused_tcp_port):
+    scan_file = tmp_path / "scan_1.pdf"
+    scan_file.write_bytes(b"%PDF-1.4 fake pdf bytes")
+    profiles = [Profile(name="Dossiary Scan", destination=str(tmp_path))]
+    result = ScanResult(ok=True, partial=False, message=str(scan_file), output_paths=[str(scan_file)])
+    trigger = FakeScanTrigger(result=result)
+    server = start_bridge_server(lambda: profiles, trigger, port=unused_tcp_port)
+    try:
+        status, body = _post(f"http://127.0.0.1:{unused_tcp_port}/scan/Dossiary%20Scan")
+    finally:
+        server.shutdown()
+
+    assert status == 200
+    assert body["files"] == [
+        {
+            "filename": "scan_1.pdf",
+            "content_base64": base64.b64encode(b"%PDF-1.4 fake pdf bytes").decode("ascii"),
+        }
+    ]
 
 
 def test_route_scan_request_partial_result_still_returns_200():

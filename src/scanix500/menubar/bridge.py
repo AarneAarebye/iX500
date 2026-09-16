@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
 import threading
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Protocol
 from urllib.parse import unquote, urlsplit
 
@@ -31,6 +33,24 @@ class ScanTrigger(Protocol):
     def trigger(self, profile: Profile) -> ScanResult: ...
 
 
+def _encode_files(output_paths: list[str]) -> list[dict]:
+    """Reads each path in output_paths off disk and base64-encodes it for
+    the HTTP response, in the same order as output_paths. A path that can
+    no longer be read (removed, permissions) is skipped rather than
+    raising -- the response still carries whatever files it could read,
+    and output_paths / the on-disk safety-net copy in the profile's own
+    destination folder remain the authoritative record regardless (see
+    the 2026-09-16 auto-connect design spec)."""
+    files = []
+    for path in output_paths:
+        try:
+            data = Path(path).read_bytes()
+        except OSError:
+            continue
+        files.append({"filename": Path(path).name, "content_base64": base64.b64encode(data).decode("ascii")})
+    return files
+
+
 def route_scan_request(profiles: list[Profile], name: str, trigger: ScanTrigger) -> tuple[int, dict]:
     """Pure dispatch: look up `name` in `profiles`, run it via `trigger`,
     shape the response. No HTTP-specific code and no threading here --
@@ -48,6 +68,7 @@ def route_scan_request(profiles: list[Profile], name: str, trigger: ScanTrigger)
         "partial": result.partial,
         "message": result.message,
         "output_paths": result.output_paths,
+        "files": _encode_files(result.output_paths),
     }
 
 
