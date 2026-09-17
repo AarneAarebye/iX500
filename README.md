@@ -454,21 +454,15 @@ browsing on it, by anyone using it.
 ### Dossiary integration
 
 [Dossiary](https://github.com/AarneAarebye/Dossiary) (a separate app) has
-its own "Scan"/"Scan Multi" toolbar buttons that call this bridge. Once
-Dossiary's own matching change ships, it will call this bridge directly
-with the settings each button wants — there's no profile to create or
-name to keep in sync anymore. Dossiary's auto-connect support (it
-health-probes the bridge and reads `files` to write the scan into
-whichever library's `inbox/` is currently open) already ships; **this
-endpoint's own parameterized request format does not yet have a matching
-Dossiary-side implementation as of this writing** — Dossiary's currently-
-released code still POSTs to the old `/scan/<profile-name>` path with
-fixed profile names.
+its own "Scan"/"Scan Multi" toolbar buttons that call this bridge. Both
+sides are in sync as of Dossiary v1.18.0: it health-probes the bridge on
+the default port, calls the parameterized `POST /scan` endpoint directly
+with the settings each button wants, and reads `files` to write the scan
+into whichever library's `inbox/` is currently open. There's no profile
+to create and no name to keep in sync — just run `scanix500-menubar` and
+Dossiary's Scan/Scan Multi buttons auto-connect on first click, with no
+manual URL entry unless the bridge is running on a non-default port (set
+via Dossiary's Field Settings, `scan_bridge_url`).
 
-**This is a breaking change with no backward-compatible fallback**: this
-endpoint replaces `POST /scan/<profile-name>` outright, not alongside it.
-Dossiary's own matching change must ship together with this one, or its
-Scan/Scan Multi buttons will get a `404` against an updated bridge until
-it does. Optionally, once both sides are in sync, change **"Set Bridge
-Scan Folder…"** if you don't want the safety-net copy landing in
-`~/Documents/Scans`.
+Optionally, change **"Set Bridge Scan Folder…"** if you don't want the
+safety-net copy landing in `~/Documents/Scans`.
