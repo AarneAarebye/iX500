@@ -107,10 +107,21 @@ Run these by hand against the real iX500 after any change to `capture.py` or
       `scanimage --help -d <device>`. Now explicitly sets `mode="Color"`.
       Re-verified with a real double-sided color document: output pages
       came out in full color.
-- [ ] Load a stack with one intentionally blank backside: resulting PDF
+- [x] Load a stack with one intentionally blank backside: resulting PDF
       has that blank page removed.
-- [ ] Load a stack with a fully blank separator sheet in the middle, run
-      with `--split-on-blank`: two separate PDFs are produced.
+- [x] **Fixed 2026-09-17, hardware-verified:** `--split-on-blank` never
+      split on a real blank separator sheet — `is_blank()`'s pixel cutoff
+      (`value < 250`) was too strict for this scanner's actual output. A
+      real scanned blank sheet (300 DPI, Color) has 35-40% of its pixels
+      in the 240-249 range from normal vignetting/paper-texture noise,
+      putting it nowhere near the 2% area threshold; confirmed by dumping
+      every raw captured page and computing non-background ratios at
+      several cutoffs. Lowering the cutoff to `value < 240` drops the
+      same real blank sheet to ~1% while every real content page in the
+      same test batch stayed above 3% — a >2.5x margin. Re-verified after
+      the fix: a real stack (sheet 1 double-sided, blank separator, 3
+      more double-sided sheets) with `--split-on-blank` produced exactly
+      two PDFs, 2 pages and 6 pages, matching the physical layout.
 - [x] **Fixed 2026-09-13, hardware-verified:** output PDF page size matches
       the original document. Real captures came out ~3x oversized (25.5x33in
       instead of 8.5x11in) because `python-sane`'s `snap()`/`multi_scan()`
