@@ -17,7 +17,7 @@ for the implementation plan.
 
 ## Status
 
-**All three phases are complete.**
+**All four phases are complete.**
 
 - **Phase 1 — CLI pipeline.** The `scanix500` command-line tool: ADF duplex capture,
   blank-page detection, splitting on separator sheets, PDF assembly, and OCR.
@@ -25,6 +25,9 @@ for the implementation plan.
   item per saved profile and Add/Edit/Delete Profile management.
 - **Phase 3 — Physical button trigger.** Pressing the Scan button on the iX500 itself
   starts a scan using the "Hardware Button" profile.
+- **Phase 4 — HTTP bridge.** A localhost-only HTTP endpoint built into the menu bar
+  app so an external caller (Dossiary) can trigger a parameterized scan and receive
+  the scanned file(s) directly — see "Phase 4: HTTP bridge" below.
 
 Automated tests cover all pure logic. Manual hardware and UI tests are documented in the
 checklists below and must be run against the physical iX500 — hardware and GUI behavior

@@ -9,8 +9,12 @@ ScanSnap iX500 scanner directly via SANE, replacing ScanSnap Home (which
 no longer activates this scanner — a vendor lifecycle decision, not a
 hardware fault). Full context lives in:
 
-- `docs/superpowers/specs/2026-09-13-scanix500-pipeline-design.md` — design, architecture, rationale
-- `docs/superpowers/plans/2026-09-13-scanix500-cli-pipeline.md` — task-by-task implementation plan for Phase 1 (the `scanix500` CLI)
+- `docs/superpowers/specs/2026-09-13-scanix500-pipeline-design.md` — design, architecture, rationale for Phase 1 (the `scanix500` CLI)
+- `docs/superpowers/plans/2026-09-13-scanix500-cli-pipeline.md` — task-by-task implementation plan for Phase 1
+- `docs/superpowers/specs/2026-09-13-scanix500-menubar-design.md` + `docs/superpowers/plans/2026-09-13-scanix500-menubar-app.md` — Phase 2 (`scanix500-menubar`)
+- `docs/superpowers/specs/2026-09-13-scanix500-button-trigger-design.md` + `docs/superpowers/plans/2026-09-13-scanix500-button-trigger.md` — Phase 3 (physical Scan-button trigger)
+- `docs/superpowers/plans/2026-09-14-scanix500-http-bridge.md` (Phase 4's original plan), plus its later amendments `docs/superpowers/plans/2026-09-16-scan-bridge-auto-connect.md` and `docs/superpowers/plans/2026-09-16-scan-bridge-parameterized-scan.md` — the HTTP bridge; each amendment's own design spec lives in the sibling Dossiary repo (see "Project phasing" below)
+- `docs/superpowers/specs/2026-09-14-scanix500-profile-form-design.md` + `docs/superpowers/plans/2026-09-14-scanix500-profile-form.md` — the Add/Edit Profile settings window
 
 Read the spec before making architectural changes; read the plan before
 implementing — it defines exact file layout, function signatures, and
@@ -77,10 +81,14 @@ TDD steps.
 
 ## Project phasing
 
-This repo currently covers **Phase 1 only** (the CLI pipeline). Phase 2
-(menu bar app) and Phase 3 (physical Scan-button trigger, a research
-spike — feasibility on macOS is unconfirmed) are follow-on work with
-their own future specs/plans; don't assume they exist yet.
+All four phases are complete and in this repo: Phase 1 (the `scanix500`
+CLI pipeline), Phase 2 (`scanix500-menubar`, the menu bar app), Phase 3
+(the physical Scan-button trigger — feasible on macOS, confirmed against
+real hardware), and Phase 4 (the embedded HTTP bridge for Dossiary,
+amended twice since its original plan — see the spec/plan list above).
+The Add/Edit Profile settings window is a Phase 2 follow-on, also
+complete. See README.md's own "Status" section for the same summary
+aimed at a human reader.
 
 ## Conventions
 
