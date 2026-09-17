@@ -1,6 +1,6 @@
 [project]
 name = "scanix500"
-version = "0.1.0"
+version = "0.2.0"
 description = "Vendor-independent scan pipeline for the ScanSnap iX500"
 requires-python = ">=3.11"
 dependencies = [
