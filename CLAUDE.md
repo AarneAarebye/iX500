@@ -44,9 +44,13 @@ TDD steps.
   indistinguishable, from the app's own perspective, from a menu click or
   a physical button press. `bridge.py` itself has zero rumps/AppKit
   dependency and is fully unit-testable (`tests/menubar/test_bridge.py`);
-  only the small `ScanixMenuBarApp.trigger()` integration in `app.py` is
-  thread-marshaling/AppKit-dependent code, following this repo's existing
-  "hardware/live-GUI code is manually verified, not mocked" precedent.
+  only the thread-marshaling/AppKit-dependent bits of `app.py` (actual
+  menu rendering, `ScanixMenuBarApp.trigger()`'s cross-thread signaling)
+  follow this repo's "hardware/live-GUI code is manually verified, not
+  mocked" precedent — `app.py`'s own orchestration logic (`_execute_scan`,
+  bridge-startup resilience, `_set_bridge_destination`) is unit-tested via
+  `ScanixMenuBarApp.__new__()` plus mocked collaborators, same as any
+  other pure logic (see `tests/menubar/test_app.py`).
 - **Extended 2026-09-16** (see the design spec in the sibling Dossiary
   repo, `docs/superpowers/specs/2026-09-16-scan-bridge-auto-connect-design.md`
   under `/Users/aarneaarebye/Projects/Paperless/Dossiary`; this repo's own

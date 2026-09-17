@@ -67,16 +67,22 @@ commands for that session.
 
     .venv/bin/pytest
 
-60 tests cover all pure logic (capture pairing/multi-feed/empty-ADF/odd-frame
+91 tests cover all pure logic (capture pairing/multi-feed/empty-ADF/odd-frame
 handling, SANE device matching, blank detection and splitting, PDF assembly,
 page DPI geometry and OCR fallback, output path naming, CLI wiring including
 destination-folder creation, all-blank batches and multi-feed partial-batch
-processing, and the menu bar app's profile storage — seeding, one-time
-Hardware Button migration, lookup — plus scan-output parsing and executable
-resolution) using fakes and mocks — no scanner hardware required.
+processing, the menu bar app's profile storage — seeding, one-time Hardware
+Button migration, lookup — the bridge scan-folder setting's atomic-write
+storage, the HTTP bridge's routing/validation/handler logic, and scan-output
+parsing and executable resolution) using fakes and mocks — no scanner
+hardware required. This also includes `app.py`'s own orchestration logic —
+`_execute_scan`'s error handling, bridge-startup resilience, and
+`_set_bridge_destination` — exercised via `ScanixMenuBarApp.__new__()` to
+skip real AppKit initialization and mocking its collaborators.
 
-Live hardware code (`button_watcher.py`) and live GUI code (`app.py`) have no
-automated tests by design; they're covered by the manual checklists below.
+Live hardware code (`button_watcher.py`) and the actual AppKit
+rendering/menu-interaction code in `app.py` have no automated tests by
+design; they're covered by the manual checklists below.
 
 ## Manual hardware checklist
 
@@ -222,8 +228,10 @@ then remove the plist file.
 
 ### Manual UI checklist
 
-Run these by hand — `app.py` has no automated tests, since it's live
-GUI/AppKit code:
+Run these by hand — `app.py`'s actual AppKit rendering and menu
+interaction have no automated tests, since they're live GUI code (its
+orchestration logic, like `_execute_scan` and `_set_bridge_destination`,
+is unit-tested — see `tests/menubar/test_app.py`):
 
 - [x] **Fixed 2026-09-13, hardware-verified:** the app crashed on every
       single launch with `NSInternalInconsistencyException - Item to be
@@ -303,11 +311,16 @@ GUI/AppKit code:
       folder and then running the smoke-test `curl` above writes the
       safety-net PDF into that new folder, not the old one — confirm by
       checking the folder's contents before and after.
-- [ ] From Dossiary's own page (once that side exists), clicking Scan
-      produces a readable response body, not an opaque CORS failure —
-      `curl` above exercises none of the browser's own CORS behavior, and
-      CORS is the entire reason the bridge's OPTIONS handling and
+- [x] From Dossiary's own page, clicking Scan/Scan Multi produces a
+      readable response body, not an opaque CORS failure — `curl` alone
+      exercises none of the browser's own CORS behavior, and CORS is the
+      entire reason the bridge's OPTIONS handling and
       `Access-Control-Allow-Origin` header exist in the first place.
+      **Verified 2026-09-17** end-to-end against a real Dossiary v1.18.0
+      library: both buttons auto-connected with no manual URL entry, and
+      a real multi-document Scan Multi request correctly added 2 separate
+      documents to the inbox (see the `--split-on-blank` fix below — this
+      also caught that bug live).
 
 ## Phase 3: Physical Scan-button trigger
 
