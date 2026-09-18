@@ -3,6 +3,22 @@
 A vendor-independent scan pipeline for the ScanSnap iX500, driving it
 directly via SANE instead of ScanSnap Home.
 
+## New here via Dossiary?
+
+If you followed a link from [Dossiary](https://github.com/AarneAarebye/Dossiary)
+to get its Scan/Scan Multi toolbar buttons working, here's the fast path:
+
+1. Download the latest release from
+   [Releases](https://github.com/AarneAarebye/iX500/releases/latest).
+2. Run `scanix500-menubar.app`.
+3. That's it — Dossiary auto-connects to it on `localhost:8765` with no
+   further setup.
+
+The rest of this README covers the full project (the CLI scan pipeline,
+the menu bar app's own profile system, hardware-button scanning, and the
+HTTP bridge's internals) for anyone who wants to understand or build on
+it — not required just to get Dossiary's scan buttons working.
+
 ## Why
 
 Ricoh/PFU's ScanSnap Home no longer activates this iX500 (red-error badge,
