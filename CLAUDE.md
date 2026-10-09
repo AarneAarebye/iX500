@@ -93,6 +93,20 @@ TDD steps.
   it's the pairing scheme from dossiary-scan-helper's `PROTOCOL.md`,
   applied to the version 1 request. Not backward compatible: Dossiary
   before v1.43.0 can't pair. Only token hashes are stored.
+- **Pages come out at their paper's size (0.3.0)** -- the scan area stays
+  A4, and three steps shrink it to the sheet: `PySaneDevice` turns on the
+  driver's `ald` (the scanner's sensor ends the page at the paper's end)
+  and `swdeskew`/`swcrop`, and `cli.py` then runs `trim.py`'s
+  `trim_background()` on every page before the blank filter. The trim is
+  needed because `swcrop` can't find a narrow sheet's side edges: the ADF
+  background is as light as white paper. It's told apart by texture
+  instead -- an even strip (column std. dev. < 4 on a 1/4-size copy) at
+  least 8 mm wide at a page's side is cut off. Verified with a real A5
+  sheet (149x212 mm out). If a page ever loses content at a side, check
+  that threshold against the real scan before changing anything else.
+- **`start-menubar.sh` / `stop-menubar.sh`** start or stop the menu bar
+  app. Stop unloads the LaunchAgent instead of killing the process, since
+  its `KeepAlive` would restart a killed app.
 
 ## Project phasing
 
