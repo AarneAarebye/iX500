@@ -227,6 +227,20 @@ latter is what the physical Scan button triggers — see
 [Phase 3](#phase-3-physical-scan-button-trigger) below). Both are ordinary
 profiles and can be edited or deleted like any other.
 
+### Start and stop scripts
+
+    ./start-menubar.sh
+    ./stop-menubar.sh
+
+`start-menubar.sh` starts (or restarts) the app and waits until the bridge
+answers on `localhost:8765`, printing the last log lines if it doesn't.
+With the login item below installed it starts the app through launchd, so
+it keeps running after the terminal closes; without it, the app runs in
+the background and logs to `/tmp/scanix500-menubar.log`.
+`stop-menubar.sh` unloads the login item rather than killing the app,
+since its `KeepAlive` would restart a killed app straight away. It loads
+again at the next login or with `start-menubar.sh`.
+
 ### Auto-launch at login
 
 1. Find the installed script's full path: `cd /path/to/iX500 && pwd -P` then append `/.venv/bin/scanix500-menubar` (or `which scanix500-menubar` if you've activated the venv in your current shell)
