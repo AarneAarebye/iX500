@@ -115,13 +115,19 @@ class PySaneDevice:
         # to match — confirmed against real hardware, no separate call needed.
         self._dev.page_width = A4_WIDTH_MM
         self._dev.page_height = A4_HEIGHT_MM
-        # The scan area stays A4, but the driver's software deskew/crop
-        # straighten each side and trim it to the paper's edges, so an A5
-        # sheet (or a receipt) comes back at its own size instead of on an
-        # A4 page of background -- what ScanSnap's own software does.
+        # The scan area stays A4, but each page comes back at its paper's own
+        # size (an A5 sheet as A5, a receipt as a receipt) instead of on an
+        # A4 page of background -- what ScanSnap's own software does:
+        # - ald: the scanner's sensor ends the page where the paper ends.
+        #   Needed because swcrop alone can't find a bottom edge: the ADF
+        #   background is as light as white paper (measured 236 vs 224 on a
+        #   real A5 scan), so swcrop left the A4 length in place.
+        # - swdeskew/swcrop: straighten each side, then trim it to the
+        #   paper's edges in software.
         # pdf_builder sizes each PDF page from the image and its DPI, so the
-        # cropped size carries through. Both options are listed by
+        # cropped size carries through. All three are listed by
         # `scanimage -A` for the iX500 (advanced, default off).
+        self._dev.ald = True
         self._dev.swdeskew = True
         self._dev.swcrop = True
 

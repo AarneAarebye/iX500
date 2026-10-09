@@ -128,11 +128,14 @@ Run these by hand against the real iX500 after any change to `capture.py` or
       auto-syncs the scan area (`br_x`/`br_y`) on real hardware, and a real
       scan produced a PDF page at exactly 210.0x297.0mm.
 - [ ] **Added 2026-10-09:** the driver's software deskew and crop
-      (`swdeskew`, `swcrop`) are on, so each page comes out straightened
-      at its paper's own size (an A5 sheet as A5) inside the A4 scan
-      area, like ScanSnap's own software. Confirmed the real iX500 accepts
-      both options; still to verify with a real A5 scan that the crop
-      finds the paper's edges.
+      (`swdeskew`, `swcrop`) and automatic length detection (`ald`) are
+      on, so each page comes out straightened at its paper's own size (an
+      A5 sheet as A5) inside the A4 scan area, like ScanSnap's own
+      software. A real A5 scan with only `swdeskew`/`swcrop` came out
+      straight but 180x297mm: the ADF background is as light as white
+      paper, so the crop found the top and left edges but not the bottom
+      or right. `ald` (the scanner's own paper-end sensor) was added for
+      the length; still to verify with a real A5 scan.
 - [x] **Fixed 2026-09-13, hardware-verified:** scans come out in color, not
       black & white. `PySaneDevice` never set the `mode` option, so it
       silently used the backend's own default — confirmed to be `Lineart`
