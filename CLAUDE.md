@@ -82,6 +82,17 @@ TDD steps.
   menu-editable setting (`bridge_settings.py`), not a profile's own
   `destination` field — see README.md's own "Set Bridge Scan Folder…"
   note.
+- **Pairing (0.3.0)** — `pairing.py` (`PairingStore`), wired into
+  `bridge.py` and the menu ("Pair a Browser…", "Forget Paired Browsers…").
+  Requests with an `Origin` other than `null`/`http://localhost:<port>`/
+  `http://127.0.0.1:<port>` get 403, allowed origins are echoed instead of
+  `*`, and `POST /scan` needs `Authorization: Bearer <token>` from
+  `POST /pair` (401 otherwise). `GET /health` stays open and adds
+  `paired`. This closes the hole where any website (via `Origin: null`
+  from a sandboxed iframe) could start a scan and read the document;
+  it's the pairing scheme from dossiary-scan-helper's `PROTOCOL.md`,
+  applied to the version 1 request. Not backward compatible: Dossiary
+  before v1.43.0 can't pair. Only token hashes are stored.
 
 ## Project phasing
 

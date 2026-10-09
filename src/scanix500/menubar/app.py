@@ -14,6 +14,7 @@ from scanix500.menubar.bridge_settings import (
     load_bridge_destination,
     save_bridge_destination,
 )
+from scanix500.menubar.pairing import PairingStore, default_pairing_path
 from scanix500.menubar.button_watcher import button_pressed, resolve_device_name
 from scanix500.menubar.profile_form import pick_folder, show_profile_form
 from scanix500.menubar.profiles import (
@@ -49,6 +50,9 @@ class ScanixMenuBarApp(rumps.App):
         self.profiles = load_profiles(self.profiles_path)
         self.bridge_destination_path = default_bridge_destination_path()
         self.bridge_destination = load_bridge_destination(self.bridge_destination_path)
+        # Browsers paired with the bridge (see pairing.py): a scan request
+        # needs a token from "Pair a Browser…".
+        self.pairing = PairingStore(default_pairing_path())
         self._scanning = False
         # See _rebuild_menu's comment on self._app_started.
         self._app_started = False
@@ -73,7 +77,7 @@ class ScanixMenuBarApp(rumps.App):
         # the whole menu bar app down with it, since a launchd-launched
         # process has nowhere useful for an uncaught traceback to go.
         try:
-            self._bridge_server = start_bridge_server(lambda: self.bridge_destination, self)
+            self._bridge_server = start_bridge_server(lambda: self.bridge_destination, self, self.pairing)
         except (OSError, ValueError) as e:
             self._bridge_server = None
             rumps.notification(title="Scan bridge unavailable", subtitle="", message=str(e))
@@ -97,6 +101,8 @@ class ScanixMenuBarApp(rumps.App):
 
         self.menu.add(rumps.separator)
         self.menu.add(rumps.MenuItem("Set Bridge Scan Folder…", callback=self._set_bridge_destination))
+        self.menu.add(rumps.MenuItem("Pair a Browser…", callback=self._pair_browser))
+        self.menu.add(rumps.MenuItem("Forget Paired Browsers…", callback=self._forget_paired_browsers))
 
         # rumps appends the Quit item itself, but only once, inside
         # initializeStatusBar() — which runs at the end of App.run(), after
@@ -236,6 +242,27 @@ class ScanixMenuBarApp(rumps.App):
         self._scanning = False
         self.title = IDLE_TITLE
         rumps.notification(title=notification_title(result), subtitle="", message=result.message)
+
+    def _pair_browser(self, _sender):
+        """Shows a fresh pairing code for Dossiary to enter. The code stays
+        valid for 2 minutes (5 attempts) whether or not the alert is still
+        open -- the bridge keeps serving on its own threads meanwhile."""
+        code = self.pairing.open_window()
+        rumps.alert(
+            title="Pair a Browser",
+            message=f"Enter this code in Dossiary:\n\n{code[:3]} {code[3:]}\n\nIt's valid for 2 minutes.",
+        )
+
+    def _forget_paired_browsers(self, _sender):
+        count = self.pairing.paired_count()
+        answer = rumps.alert(
+            title="Forget Paired Browsers",
+            message=f"Forget all {count} paired browser(s)? Dossiary will ask for a new pairing code before its next scan.",
+            ok="Forget",
+            cancel="Cancel",
+        )
+        if answer == 1:
+            self.pairing.forget_all()
 
     def _set_bridge_destination(self, _sender):
         if self._scanning:

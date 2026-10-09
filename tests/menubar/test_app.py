@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -46,6 +47,7 @@ def test_init_survives_bridge_startup_oserror():
         patch("scanix500.menubar.app.default_profiles_path", return_value="/tmp/scanix500-test-profiles.json"),
         patch("scanix500.menubar.app.load_bridge_destination", return_value="/tmp/scans"),
         patch("scanix500.menubar.app.default_bridge_destination_path", return_value="/tmp/scanix500-test-bridge-destination.txt"),
+        patch("scanix500.menubar.app.default_pairing_path", return_value=Path("/tmp/scanix500-test-paired-browsers.json")),
         patch("scanix500.menubar.app.start_bridge_server", side_effect=OSError("Address already in use")),
         patch("scanix500.menubar.app.rumps.notification") as notification,
     ):
@@ -67,6 +69,7 @@ def test_init_survives_bridge_startup_valueerror():
         patch("scanix500.menubar.app.default_profiles_path", return_value="/tmp/scanix500-test-profiles.json"),
         patch("scanix500.menubar.app.load_bridge_destination", return_value="/tmp/scans"),
         patch("scanix500.menubar.app.default_bridge_destination_path", return_value="/tmp/scanix500-test-bridge-destination.txt"),
+        patch("scanix500.menubar.app.default_pairing_path", return_value=Path("/tmp/scanix500-test-paired-browsers.json")),
         patch("scanix500.menubar.app.start_bridge_server", side_effect=ValueError("invalid literal for int()")),
         patch("scanix500.menubar.app.rumps.notification") as notification,
     ):
@@ -124,3 +127,33 @@ def test_set_bridge_destination_does_nothing_while_scanning():
         app._set_bridge_destination(None)
 
     pick.assert_not_called()
+
+
+def _app_with_pairing(tmp_path):
+    from scanix500.menubar.app import ScanixMenuBarApp
+    from scanix500.menubar.pairing import PairingStore
+
+    app = ScanixMenuBarApp.__new__(ScanixMenuBarApp)
+    app.pairing = PairingStore(tmp_path / "paired.json")
+    return app
+
+
+def test_pair_browser_shows_a_code_that_pairs(tmp_path):
+    app = _app_with_pairing(tmp_path)
+    with patch("scanix500.menubar.app.rumps.alert") as alert:
+        app._pair_browser(None)
+    message = alert.call_args.kwargs["message"]
+    digits = "".join(ch for ch in message.split("\n\n")[1] if ch.isdigit())
+    assert len(digits) == 6
+    assert app.pairing.is_valid(app.pairing.pair(digits))
+
+
+def test_forget_paired_browsers_only_on_confirm(tmp_path):
+    app = _app_with_pairing(tmp_path)
+    token = app.pairing.pair(app.pairing.open_window())
+    with patch("scanix500.menubar.app.rumps.alert", return_value=0):
+        app._forget_paired_browsers(None)
+    assert app.pairing.is_valid(token)
+    with patch("scanix500.menubar.app.rumps.alert", return_value=1):
+        app._forget_paired_browsers(None)
+    assert not app.pairing.is_valid(token)

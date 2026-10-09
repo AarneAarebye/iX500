@@ -326,8 +326,13 @@ is unit-tested — see `tests/menubar/test_app.py`):
       press), a second `curl -i -X POST
       "http://127.0.0.1:8765/scan?skip_blank_filter=false&skip_ocr=false&split_on_blank=false"`
       from another terminal → `409`.
-- [ ] `curl -i -X OPTIONS http://127.0.0.1:8765/scan` → `204` with
-      `Access-Control-Allow-Origin: *`.
+- [ ] `curl -i -X OPTIONS -H "Origin: null" http://127.0.0.1:8765/scan`
+      → `204` with `Access-Control-Allow-Origin: null`; the same with
+      `-H "Origin: https://example.com"` → `403`.
+- [ ] **"Pair a Browser…"** shows a code; pairing with it via `curl`
+      (see "Pairing" below) returns a token, and a scan `curl` without
+      that token answers `401`. **"Forget Paired Browsers…"** makes the
+      old token answer `401` too.
 - [ ] **"Set Bridge Scan Folder…"** appears in the menu; choosing a new
       folder and then running the smoke-test `curl` above writes the
       safety-net PDF into that new folder, not the old one — confirm by
@@ -453,13 +458,28 @@ avoid an indefinite wait should apply its own client-side timeout.
 The port defaults to `8765`; override it by setting `SCANIX500_BRIDGE_PORT`
 before launching `scanix500-menubar`.
 
-**Smoke test** (with paper loaded in the ADF):
+**Pairing (since 0.3.0).** A scan request needs a token: choose **"Pair a
+Browser…"** in the menu, which shows a 6-digit code valid for 2 minutes (5
+attempts), and send it to `POST /pair`:
 
-    curl -i -X POST "http://127.0.0.1:8765/scan?skip_blank_filter=false&skip_ocr=false&split_on_blank=false"
+    curl -s -X POST -H "Content-Type: application/json" -d '{"code": "123456", "client": "curl"}' http://127.0.0.1:8765/pair
+
+The answer is `{"ok": true, "token": "..."}`. Dossiary does this for you:
+it asks for the code the first time it scans. A wrong or expired code gets
+`403`; a scan without a valid `Authorization: Bearer <token>` header gets
+`401`. Only SHA-256 hashes of the tokens are kept, in
+`~/Library/Application Support/scanix500/paired_browsers.json`;
+**"Forget Paired Browsers…"** clears them, so every browser has to pair
+again.
+
+**Smoke test** (with paper loaded in the ADF, and a token from pairing):
+
+    curl -i -X POST -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/scan?skip_blank_filter=false&skip_ocr=false&split_on_blank=false"
 
 **`GET /health`** is a separate, lightweight endpoint a caller can probe
 before ever attempting a scan — `200` with `{"service":
-"scanix500-bridge"}` immediately, no busy-guard interaction, no scanner
+"scanix500-bridge", "paired": false}` immediately (`paired` says whether
+the request's own `Authorization` token is valid), no busy-guard interaction, no scanner
 involvement. It exists so a client can auto-detect whether the bridge is
 running on the default port before falling back to asking the person to
 confirm the port manually:
@@ -475,32 +495,28 @@ caller (Dossiary) already receives the scanned bytes directly in `files`
 (see above), so this folder exists purely as a local backup, not as
 something a caller picks per scan.
 
-**Trust model**: the bridge binds to `127.0.0.1` only and has no
-authentication, `Host` validation, or `Origin` validation, and it returns
-`Access-Control-Allow-Origin: *` on every response (required so Dossiary,
-a `file://` page sending `Origin: null`, can read the response at all — a
-narrower allow-list can't accommodate that). This is broader exposure
-than "physical access to this machine": a plain cross-origin `POST`
-doesn't need CORS permission to be *sent*, only for its *response* to be
-readable, and the wildcard header here makes it readable too — so **any
-web page you visit in any browser on this machine, or any other local
-process**, can `POST` to `http://127.0.0.1:8765/scan`, trigger a
-real physical scan, and read back both `output_paths` (absolute
-filesystem paths that disclose your username and library location) and,
-via the `files` field, the complete contents of whatever was just
-scanned — not just its location, but the actual document. This isn't a
-flaw to fix here — binding to loopback with no auth is a deliberate
-design choice, and Dossiary's `file://`-origin requirement is exactly
-what rules out a narrower CORS allow-list — but don't run this on a
-shared or networked machine, and understand that the risk isn't limited
-to other people with access to this machine: it includes ordinary web
-browsing on it, by anyone using it.
+**Trust model**: the bridge binds to `127.0.0.1` only. Requests carrying
+an `Origin` header are refused (`403`) unless it is `null` (a `file://`
+page such as Dossiary) or `http://localhost:<port>` /
+`http://127.0.0.1:<port>`; an allowed origin is echoed back in
+`Access-Control-Allow-Origin` (no more `*`). Requests without an `Origin`
+(curl, other local processes) are allowed. The origin check alone can't
+keep out a web page, though: any website can send `Origin: null` from a
+sandboxed iframe. That's what pairing is for — a scan needs a token that
+only a browser you paired (by typing the code the menu showed you) has.
+Before 0.3.0 the bridge had no such check, and any web page you visited
+could start a scan and read the scanned document back.
+
+Local processes running as you can still pair themselves only if they can
+read the code off your screen; anything that can do that can also read
+your files directly, so that's outside what the bridge protects against.
 
 ### Dossiary integration
 
 [Dossiary](https://github.com/AarneAarebye/Dossiary) (a separate app) has
-its own "Scan"/"Scan Multi" toolbar buttons that call this bridge. Both
-sides are in sync as of Dossiary v1.18.0: it health-probes the bridge on
+its own "Scan"/"Scan Multi" toolbar buttons that call this bridge. Since scanix500 0.3.0
+Dossiary must pair first (Dossiary v1.43.0 and later ask for the code;
+older versions get `401`). Before that, as of Dossiary v1.18.0: it health-probes the bridge on
 the default port, calls the parameterized `POST /scan` endpoint directly
 with the settings each button wants, and reads `files` to write the scan
 into whichever library's `inbox/` is currently open. There's no profile

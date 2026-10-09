@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import threading
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -10,10 +11,29 @@ from pathlib import Path
 from typing import Protocol
 from urllib.parse import parse_qs, urlsplit
 
+from scanix500.menubar.pairing import PairingError, PairingStore, bearer_token
 from scanix500.menubar.profiles import Profile
 from scanix500.menubar.runner import ScanResult
 
 DEFAULT_PORT = 8765
+MAX_BODY_BYTES = 10_000
+
+_ALLOWED_ORIGIN = re.compile(r"http://(localhost|127\.0\.0\.1)(?::([0-9]{1,5}))?")
+
+
+def origin_allowed(origin: str | None) -> bool:
+    """Only Dossiary's own origins may use the bridge: no Origin header
+    (curl, tests), "null" (a file:// page), or plain-http localhost /
+    127.0.0.1 on a port 1-65535. Anything else -- any other website -- gets
+    403. "null" alone can't prove the caller is Dossiary (sandboxed iframes
+    send it too), which is why scans also need a paired token."""
+    if origin is None or origin == "null":
+        return True
+    match = _ALLOWED_ORIGIN.fullmatch(origin)
+    if not match:
+        return False
+    port = match.group(2)
+    return port is None or 1 <= int(port) <= 65535
 
 
 class ScanBusyError(Exception):
@@ -99,7 +119,7 @@ def route_scan_request(destination: str, params: dict[str, str], trigger: ScanTr
 
 
 def make_handler_class(
-    get_destination: Callable[[], str], trigger: ScanTrigger
+    get_destination: Callable[[], str], trigger: ScanTrigger, pairing: PairingStore
 ) -> type[BaseHTTPRequestHandler]:
     """Builds a BaseHTTPRequestHandler bound to a live destination-folder
     getter (a zero-arg callable, not a static string -- the "Set Bridge
@@ -108,14 +128,44 @@ def make_handler_class(
     ScanTrigger."""
 
     class Handler(BaseHTTPRequestHandler):
+        def _cors_headers(self) -> None:
+            # Echo an allowed Origin (never "*"); a request without an
+            # Origin header gets none. Refused origins never reach here.
+            origin = self.headers.get("Origin")
+            if origin is not None and origin_allowed(origin):
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
+
         def _send_json(self, status: int, body: dict) -> None:
             payload = json.dumps(body).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self._cors_headers()
             self.end_headers()
             self.wfile.write(payload)
+
+        def _origin_ok(self) -> bool:
+            if origin_allowed(self.headers.get("Origin")):
+                return True
+            payload = json.dumps({"error": "this origin may not use the scan bridge"}).encode("utf-8")
+            self.send_response(403)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return False
+
+        def _read_json_body(self) -> object:
+            """The request body as parsed JSON; raises ValueError for a
+            missing, oversized or malformed body."""
+            try:
+                length = int(self.headers.get("Content-Length") or "0")
+            except ValueError:
+                raise ValueError("bad Content-Length") from None
+            if length <= 0 or length > MAX_BODY_BYTES:
+                raise ValueError("missing or oversized body")
+            return json.loads(self.rfile.read(length).decode("utf-8"))
 
         def send_error(self, code, message=None, explain=None):  # noqa: N802 - BaseHTTPRequestHandler's own naming
             # Overridden so every response -- including the fallback path
@@ -134,7 +184,7 @@ def make_handler_class(
             if explain is None:
                 explain = longmsg
             self.send_response(code, message)
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self._cors_headers()
             self.send_header("Content-Type", "text/html;charset=utf-8")
             body = f"{message}: {explain}".encode("utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -143,10 +193,15 @@ def make_handler_class(
                 self.wfile.write(body)
 
         def do_OPTIONS(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler's own naming
+            if not self._origin_ok():
+                return
             self.send_response(204)
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self._cors_headers()
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "*")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+            self.send_header("Access-Control-Max-Age", "600")
+            if self.headers.get("Access-Control-Request-Private-Network") == "true":
+                self.send_header("Access-Control-Allow-Private-Network", "true")
             self.send_header("Content-Length", "0")
             self.end_headers()
 
@@ -155,29 +210,55 @@ def make_handler_class(
             # trigger -- this must never touch trigger/self._scanning, so a
             # caller (Dossiary) can probe "is the bridge here" without any
             # risk of firing a real scan at an unknown port.
+            if not self._origin_ok():
+                return
             path = urlsplit(self.path).path
             if path == "/health":
-                self._send_json(200, {"service": "scanix500-bridge"})
+                # "paired" tells Dossiary whether the token it sent (if any)
+                # is valid, so it knows when to ask for a pairing code.
+                token = bearer_token(self.headers.get("Authorization"))
+                self._send_json(200, {"service": "scanix500-bridge", "paired": pairing.is_valid(token)})
                 return
             self._send_json(404, {"error": "not found"})
 
         def do_POST(self) -> None:  # noqa: N802
-            # Never reads self.rfile -- safe only because protocol_version
-            # stays the default HTTP/1.0 (each connection closes after one
-            # response, so there's no leftover unread body to corrupt a
-            # later request on the same connection); revisit if this is
-            # ever bumped to HTTP/1.1 with request bodies in play. The
-            # scan's own parameters live entirely in the query string, not
-            # the body, so this constraint is unaffected by the
-            # parameterized-scan change.
+            # /scan never reads self.rfile (its parameters live in the query
+            # string); only /pair reads a small JSON body. Leaving a body
+            # unread is safe because protocol_version stays the default
+            # HTTP/1.0: each connection closes after one response. Revisit
+            # if this is ever bumped to HTTP/1.1.
+            if not self._origin_ok():
+                return
             path = urlsplit(self.path).path
+            if path == "/pair":
+                self._handle_pair()
+                return
             if path != "/scan":
                 self._send_json(404, {"error": "not found"})
+                return
+            if not pairing.is_valid(bearer_token(self.headers.get("Authorization"))):
+                self._send_json(401, {"error": "this browser isn't paired; choose “Pair a Browser…” in the scanix500 menu"})
                 return
             query = urlsplit(self.path).query
             params = {key: values[0] for key, values in parse_qs(query).items()}
             status, body = route_scan_request(get_destination(), params, trigger)
             self._send_json(status, body)
+
+        def _handle_pair(self) -> None:
+            try:
+                body = self._read_json_body()
+            except (ValueError, UnicodeDecodeError, RecursionError):
+                self._send_json(400, {"error": "the request body must be JSON like {\"code\": \"123456\"}"})
+                return
+            if not isinstance(body, dict) or not isinstance(body.get("code"), str):
+                self._send_json(400, {"error": "the request needs a \"code\" string"})
+                return
+            try:
+                token = pairing.pair(body["code"])
+            except PairingError as err:
+                self._send_json(403, {"error": str(err)})
+                return
+            self._send_json(200, {"ok": True, "token": token})
 
         def log_message(self, format: str, *args: object) -> None:
             # scanix500-menubar has no console under launchd -- keep quiet
@@ -188,13 +269,13 @@ def make_handler_class(
 
 
 def start_bridge_server(
-    get_destination: Callable[[], str], trigger: ScanTrigger, port: int | None = None
+    get_destination: Callable[[], str], trigger: ScanTrigger, pairing: PairingStore, port: int | None = None
 ) -> ThreadingHTTPServer:
     """Starts the bridge listening on 127.0.0.1:<port> in a daemon thread
     and returns the live server. port resolution order: this parameter (if
     given) > SCANIX500_BRIDGE_PORT env var > DEFAULT_PORT."""
     resolved_port = port if port is not None else int(os.environ.get("SCANIX500_BRIDGE_PORT", DEFAULT_PORT))
-    handler_cls = make_handler_class(get_destination, trigger)
+    handler_cls = make_handler_class(get_destination, trigger, pairing)
     server = ThreadingHTTPServer(("127.0.0.1", resolved_port), handler_cls)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server

@@ -7,7 +7,11 @@ import urllib.request
 
 import pytest
 
-from scanix500.menubar.bridge import ScanBusyError, route_scan_request, start_bridge_server
+import tempfile
+from pathlib import Path
+
+from scanix500.menubar.bridge import ScanBusyError, origin_allowed, route_scan_request, start_bridge_server
+from scanix500.menubar.pairing import PairingStore
 from scanix500.menubar.profiles import Profile
 from scanix500.menubar.runner import ScanResult
 
@@ -22,8 +26,14 @@ def unused_tcp_port() -> int:
         return s.getsockname()[1]
 
 
-def _post(url: str) -> tuple[int, dict]:
-    req = urllib.request.Request(url, method="POST", data=b"")
+# One paired browser for the whole module: scans need its token.
+PAIRING = PairingStore(Path(tempfile.mkdtemp()) / "paired_browsers.json")
+TOKEN = PAIRING.pair(PAIRING.open_window())
+
+
+def _post(url: str, token: str | None = None, headers: dict | None = None) -> tuple[int, dict]:
+    all_headers = {"Authorization": f"Bearer {token or TOKEN}", **(headers or {})}
+    req = urllib.request.Request(url, method="POST", data=b"", headers=all_headers)
     try:
         with urllib.request.urlopen(req) as resp:
             return resp.status, json.loads(resp.read())
@@ -190,7 +200,7 @@ def test_bridge_server_round_trip_delivers_file_bytes(tmp_path, unused_tcp_port)
     scan_file.write_bytes(b"%PDF-1.4 fake pdf bytes")
     result = ScanResult(ok=True, partial=False, message=str(scan_file), output_paths=[str(scan_file)])
     trigger = FakeScanTrigger(result=result)
-    server = start_bridge_server(lambda: str(tmp_path), trigger, port=unused_tcp_port)
+    server = start_bridge_server(lambda: str(tmp_path), trigger, PAIRING, port=unused_tcp_port)
     try:
         status, body = _post(_scan_url(f"http://127.0.0.1:{unused_tcp_port}"))
     finally:
@@ -208,7 +218,7 @@ def test_bridge_server_round_trip_delivers_file_bytes(tmp_path, unused_tcp_port)
 def test_bridge_server_round_trip_success(unused_tcp_port):
     result = ScanResult(ok=True, partial=False, message="/tmp/scans/scan_1.pdf", output_paths=["/tmp/scans/scan_1.pdf"])
     trigger = FakeScanTrigger(result=result)
-    server = start_bridge_server(lambda: "/tmp/scans", trigger, port=unused_tcp_port)
+    server = start_bridge_server(lambda: "/tmp/scans", trigger, PAIRING, port=unused_tcp_port)
     try:
         status, body = _post(_scan_url(f"http://127.0.0.1:{unused_tcp_port}"))
     finally:
@@ -223,7 +233,7 @@ def test_bridge_server_round_trip_success(unused_tcp_port):
 
 
 def test_bridge_server_round_trip_missing_params_is_400(unused_tcp_port):
-    server = start_bridge_server(lambda: "/tmp/scans", FakeScanTrigger(), port=unused_tcp_port)
+    server = start_bridge_server(lambda: "/tmp/scans", FakeScanTrigger(), PAIRING, port=unused_tcp_port)
     try:
         status, body = _post(f"http://127.0.0.1:{unused_tcp_port}/scan")
     finally:
@@ -239,7 +249,7 @@ def test_bridge_server_round_trip_old_profile_path_is_404(unused_tcp_port):
     # path shape must 404, never resolve to anything. This is exactly the
     # path the currently-shipped Dossiary still calls as of this branch,
     # so a regression here would silently break that integration.
-    server = start_bridge_server(lambda: "/tmp/scans", FakeScanTrigger(), port=unused_tcp_port)
+    server = start_bridge_server(lambda: "/tmp/scans", FakeScanTrigger(), PAIRING, port=unused_tcp_port)
     try:
         status, body = _post(f"http://127.0.0.1:{unused_tcp_port}/scan/Dossiary%20Scan")
     finally:
@@ -251,7 +261,7 @@ def test_bridge_server_round_trip_old_profile_path_is_404(unused_tcp_port):
 
 def test_bridge_server_round_trip_busy_is_409(unused_tcp_port):
     trigger = FakeScanTrigger(raises=ScanBusyError())
-    server = start_bridge_server(lambda: "/tmp/scans", trigger, port=unused_tcp_port)
+    server = start_bridge_server(lambda: "/tmp/scans", trigger, PAIRING, port=unused_tcp_port)
     try:
         status, _ = _post(_scan_url(f"http://127.0.0.1:{unused_tcp_port}"))
     finally:
@@ -260,24 +270,120 @@ def test_bridge_server_round_trip_busy_is_409(unused_tcp_port):
     assert status == 409
 
 
-def test_bridge_server_response_has_cors_header(unused_tcp_port):
+def test_bridge_server_echoes_allowed_origin(unused_tcp_port):
     result = ScanResult(ok=True, partial=False, message="ok", output_paths=[])
-    server = start_bridge_server(lambda: "/tmp/scans", FakeScanTrigger(result=result), port=unused_tcp_port)
+    server = start_bridge_server(lambda: "/tmp/scans", FakeScanTrigger(result=result), PAIRING, port=unused_tcp_port)
     try:
-        req = urllib.request.Request(_scan_url(f"http://127.0.0.1:{unused_tcp_port}"), method="POST", data=b"")
+        req = urllib.request.Request(_scan_url(f"http://127.0.0.1:{unused_tcp_port}"), method="POST", data=b"",
+                                     headers={"Authorization": f"Bearer {TOKEN}", "Origin": "null"})
         with urllib.request.urlopen(req) as resp:
-            assert resp.headers["Access-Control-Allow-Origin"] == "*"
+            assert resp.headers["Access-Control-Allow-Origin"] == "null"
+            assert "Origin" in resp.headers["Vary"]
+        # Without an Origin header there's nothing to echo.
+        req = urllib.request.Request(_scan_url(f"http://127.0.0.1:{unused_tcp_port}"), method="POST", data=b"",
+                                     headers={"Authorization": f"Bearer {TOKEN}"})
+        with urllib.request.urlopen(req) as resp:
+            assert resp.headers["Access-Control-Allow-Origin"] is None
     finally:
         server.shutdown()
 
 
 def test_bridge_server_options_preflight_is_handled(unused_tcp_port):
-    server = start_bridge_server(lambda: "/tmp/scans", FakeScanTrigger(), port=unused_tcp_port)
+    server = start_bridge_server(lambda: "/tmp/scans", FakeScanTrigger(), PAIRING, port=unused_tcp_port)
     try:
-        req = urllib.request.Request(f"http://127.0.0.1:{unused_tcp_port}/scan", method="OPTIONS")
+        req = urllib.request.Request(f"http://127.0.0.1:{unused_tcp_port}/scan", method="OPTIONS", headers={
+            "Origin": "null", "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Private-Network": "true"})
         with urllib.request.urlopen(req) as resp:
             assert resp.status == 204
-            assert resp.headers["Access-Control-Allow-Origin"] == "*"
+            assert resp.headers["Access-Control-Allow-Origin"] == "null"
+            assert resp.headers["Access-Control-Allow-Headers"] == "Content-Type, Authorization"
+            assert resp.headers["Access-Control-Allow-Private-Network"] == "true"
+    finally:
+        server.shutdown()
+
+
+@pytest.mark.parametrize("origin", [None, "null", "http://localhost", "http://localhost:5173", "http://127.0.0.1:8833"])
+def test_origin_allowed(origin):
+    assert origin_allowed(origin)
+
+
+@pytest.mark.parametrize("origin", ["https://evil.example", "http://localhost.evil.example", "https://localhost",
+                                    "http://localhost:0", "http://localhost:65536", "http://user@localhost",
+                                    "http://localhost/", "http://[::1", "HTTP://LOCALHOST"])
+def test_origin_refused(origin):
+    assert not origin_allowed(origin)
+
+
+def test_other_origins_get_403_before_anything_else(unused_tcp_port):
+    trigger = FakeScanTrigger(result=ScanResult(True, False, "ok", []))
+    server = start_bridge_server(lambda: "/tmp/scans", trigger, PAIRING, port=unused_tcp_port)
+    try:
+        status, body = _post(_scan_url(f"http://127.0.0.1:{unused_tcp_port}"), headers={"Origin": "https://evil.example"})
+        assert status == 403 and body["error"]
+        assert trigger.called_with is None
+        req = urllib.request.Request(f"http://127.0.0.1:{unused_tcp_port}/health", headers={"Origin": "https://evil.example"})
+        with pytest.raises(urllib.error.HTTPError) as err:
+            urllib.request.urlopen(req)
+        assert err.value.code == 403
+        assert err.value.headers["Access-Control-Allow-Origin"] is None
+    finally:
+        server.shutdown()
+
+
+def test_scan_without_a_valid_token_is_401(unused_tcp_port):
+    trigger = FakeScanTrigger(result=ScanResult(True, False, "ok", []))
+    server = start_bridge_server(lambda: "/tmp/scans", trigger, PAIRING, port=unused_tcp_port)
+    try:
+        url = _scan_url(f"http://127.0.0.1:{unused_tcp_port}")
+        for headers in [{}, {"Authorization": "Bearer wrong"}, {"Authorization": "Basic abc"}]:
+            req = urllib.request.Request(url, method="POST", data=b"", headers=headers)
+            with pytest.raises(urllib.error.HTTPError) as err:
+                urllib.request.urlopen(req)
+            assert err.value.code == 401
+            assert "Pair a Browser" in json.loads(err.value.read())["error"]
+        assert trigger.called_with is None
+    finally:
+        server.shutdown()
+
+
+def _post_json(url: str, body) -> tuple[int, dict]:
+    data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(url, method="POST", data=data, headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return resp.status, json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read())
+
+
+def test_pairing_round_trip(tmp_path, unused_tcp_port):
+    pairing = PairingStore(tmp_path / "paired.json")
+    result = ScanResult(ok=True, partial=False, message="ok", output_paths=[])
+    server = start_bridge_server(lambda: "/tmp/scans", FakeScanTrigger(result=result), pairing, port=unused_tcp_port)
+    base = f"http://127.0.0.1:{unused_tcp_port}"
+    try:
+        # No window open yet.
+        status, body = _post_json(f"{base}/pair", {"code": "123456"})
+        assert status == 403 and "Pair a Browser" in body["error"]
+        code = pairing.open_window()
+        status, _ = _post_json(f"{base}/pair", {"code": "000000" if code != "000000" else "111111"})
+        assert status == 403
+        assert _post_json(f"{base}/pair", [])[0] == 400
+        assert _post_json(f"{base}/pair", {"code": 123456})[0] == 400
+        status, body = _post_json(f"{base}/pair", {"code": code})
+        assert status == 200 and body["ok"] is True
+        token = body["token"]
+        # /health reports whether the sent token is paired.
+        with urllib.request.urlopen(f"{base}/health") as resp:
+            assert json.loads(resp.read()) == {"service": "scanix500-bridge", "paired": False}
+        req = urllib.request.Request(f"{base}/health", headers={"Authorization": f"Bearer {token}"})
+        with urllib.request.urlopen(req) as resp:
+            assert json.loads(resp.read())["paired"] is True
+        assert _post(_scan_url(base), token=token)[0] == 200
+        pairing.forget_all()
+        status, _ = _post(_scan_url(base), token=token)
+        assert status == 401
     finally:
         server.shutdown()
 
@@ -289,7 +395,7 @@ def test_bridge_server_reads_destination_live_not_a_snapshot(unused_tcp_port):
     # already running is picked up immediately.
     destination_box = ["/tmp/scans-old"]
     trigger = FakeScanTrigger(result=ScanResult(True, False, "ok", []))
-    server = start_bridge_server(lambda: destination_box[0], trigger, port=unused_tcp_port)
+    server = start_bridge_server(lambda: destination_box[0], trigger, PAIRING, port=unused_tcp_port)
     try:
         _post(_scan_url(f"http://127.0.0.1:{unused_tcp_port}"))
         assert trigger.called_with.destination == "/tmp/scans-old"
@@ -302,9 +408,10 @@ def test_bridge_server_reads_destination_live_not_a_snapshot(unused_tcp_port):
 
 def test_bridge_server_health_endpoint_returns_200(unused_tcp_port):
     trigger = FakeScanTrigger()
-    server = start_bridge_server(lambda: "/tmp/scans", trigger, port=unused_tcp_port)
+    server = start_bridge_server(lambda: "/tmp/scans", trigger, PAIRING, port=unused_tcp_port)
     try:
-        req = urllib.request.Request(f"http://127.0.0.1:{unused_tcp_port}/health", method="GET")
+        req = urllib.request.Request(f"http://127.0.0.1:{unused_tcp_port}/health", method="GET",
+                                     headers={"Origin": "null"})
         with urllib.request.urlopen(req) as resp:
             status = resp.status
             body = json.loads(resp.read())
@@ -313,13 +420,13 @@ def test_bridge_server_health_endpoint_returns_200(unused_tcp_port):
         server.shutdown()
 
     assert status == 200
-    assert body == {"service": "scanix500-bridge"}
-    assert headers["Access-Control-Allow-Origin"] == "*"
+    assert body == {"service": "scanix500-bridge", "paired": False}
+    assert headers["Access-Control-Allow-Origin"] == "null"
     assert trigger.called_with is None
 
 
 def test_bridge_server_get_unknown_path_is_404(unused_tcp_port):
-    server = start_bridge_server(lambda: "/tmp/scans", FakeScanTrigger(), port=unused_tcp_port)
+    server = start_bridge_server(lambda: "/tmp/scans", FakeScanTrigger(), PAIRING, port=unused_tcp_port)
     try:
         req = urllib.request.Request(f"http://127.0.0.1:{unused_tcp_port}/scan", method="GET")
         try:
@@ -337,7 +444,7 @@ def test_bridge_server_get_unknown_path_is_404(unused_tcp_port):
 
 
 def test_bridge_server_options_preflight_advertises_get(unused_tcp_port):
-    server = start_bridge_server(lambda: "/tmp/scans", FakeScanTrigger(), port=unused_tcp_port)
+    server = start_bridge_server(lambda: "/tmp/scans", FakeScanTrigger(), PAIRING, port=unused_tcp_port)
     try:
         req = urllib.request.Request(f"http://127.0.0.1:{unused_tcp_port}/health", method="OPTIONS")
         with urllib.request.urlopen(req) as resp:
@@ -353,9 +460,10 @@ def test_bridge_server_unhandled_method_still_has_cors_header(unused_tcp_port):
     # genuinely never implements, to keep testing
     # BaseHTTPRequestHandler's own unhandled-method fallback (the
     # send_error override above), not do_GET's own routing.
-    server = start_bridge_server(lambda: "/tmp/scans", FakeScanTrigger(), port=unused_tcp_port)
+    server = start_bridge_server(lambda: "/tmp/scans", FakeScanTrigger(), PAIRING, port=unused_tcp_port)
     try:
-        req = urllib.request.Request(f"http://127.0.0.1:{unused_tcp_port}/scan", method="PUT")
+        req = urllib.request.Request(f"http://127.0.0.1:{unused_tcp_port}/scan", method="PUT",
+                                     headers={"Origin": "http://localhost:8833"})
         try:
             with urllib.request.urlopen(req) as resp:
                 status = resp.status
@@ -367,4 +475,4 @@ def test_bridge_server_unhandled_method_still_has_cors_header(unused_tcp_port):
         server.shutdown()
 
     assert status == 501
-    assert headers["Access-Control-Allow-Origin"] == "*"
+    assert headers["Access-Control-Allow-Origin"] == "http://localhost:8833"
