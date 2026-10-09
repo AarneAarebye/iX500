@@ -115,6 +115,15 @@ class PySaneDevice:
         # to match — confirmed against real hardware, no separate call needed.
         self._dev.page_width = A4_WIDTH_MM
         self._dev.page_height = A4_HEIGHT_MM
+        # The scan area stays A4, but the driver's software deskew/crop
+        # straighten each side and trim it to the paper's edges, so an A5
+        # sheet (or a receipt) comes back at its own size instead of on an
+        # A4 page of background -- what ScanSnap's own software does.
+        # pdf_builder sizes each PDF page from the image and its DPI, so the
+        # cropped size carries through. Both options are listed by
+        # `scanimage -A` for the iX500 (advanced, default off).
+        self._dev.swdeskew = True
+        self._dev.swcrop = True
 
         # Double-feed detection is OFF by default on this hardware and must
         # be explicitly enabled — confirmed against a real iX500. df-action
