@@ -134,8 +134,14 @@ Run these by hand against the real iX500 after any change to `capture.py` or
       software. A real A5 scan with only `swdeskew`/`swcrop` came out
       straight but 180x297mm: the ADF background is as light as white
       paper, so the crop found the top and left edges but not the bottom
-      or right. `ald` (the scanner's own paper-end sensor) was added for
-      the length; still to verify with a real A5 scan.
+      or right. `ald` (the scanner's own paper-end sensor) fixed the
+      length: the next A5 scan came out 179x211mm. For the width,
+      `trim.py` trims the scanner's background from the sides itself: the
+      background is perfectly even (a column varies by ~2-3 top to
+      bottom), paper isn't (6-10, even a blank margin or the back), so an
+      even strip at least 8mm wide at either side is cut off. On that same
+      real scan both sides came out at 149-150x211mm with nothing of the
+      document lost; still to verify with the next live scan.
 - [x] **Fixed 2026-09-13, hardware-verified:** scans come out in color, not
       black & white. `PySaneDevice` never set the `mode` option, so it
       silently used the backend's own default — confirmed to be `Lineart`

@@ -3,10 +3,11 @@ import sys
 from pathlib import Path
 
 from scanix500.blank_filter import filter_pages
-from scanix500.capture import PySaneDevice, capture_pages
+from scanix500.capture import PagePair, PySaneDevice, capture_pages
 from scanix500.errors import MultiFeedError, NoPagesScannedError, ScannerNotFoundError
 from scanix500.pdf_builder import build_pdf
 from scanix500.router import compute_output_paths
+from scanix500.trim import trim_background
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -43,6 +44,10 @@ def main(argv: list[str] | None = None) -> int:
         exit_code = 1
     else:
         exit_code = 0
+
+    # Trim the scanner's background from the sides first, so an A5 sheet
+    # comes out at A5 width and the blank check only sees the paper.
+    pages = [PagePair(trim_background(p.front), trim_background(p.back)) for p in pages]
 
     if args.skip_blank_filter:
         partitions = [
