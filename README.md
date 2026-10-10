@@ -545,8 +545,8 @@ your files directly, so that's outside what the bridge protects against.
 ### Dossiary integration
 
 [Dossiary](https://github.com/AarneAarebye/Dossiary) (a separate app)
-scans through this bridge from its **📷 Scan** dialog. Since Dossiary's
-scan dialog (the release after v1.43.0), Dossiary:
+scans through this bridge from its **📷 Scan** dialog. Since Dossiary
+v1.44.0, Dossiary:
 
 - finds the bridge on `localhost:8765` by itself (a bridge on another port
   can be entered in the dialog or in Field Settings, `scan_bridge_url`);
