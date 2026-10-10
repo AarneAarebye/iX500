@@ -16,8 +16,9 @@ release build, just the source. Clone the repo, follow the steps in
 
     .venv/bin/scanix500-menubar
 
-Dossiary auto-connects to it on `localhost:8765` with no further setup
-once it's running.
+Dossiary finds it on `localhost:8765` by itself once it's running. The
+first time, Dossiary's scan dialog asks you to pair: choose **"Pair a
+Browser…"** in the scanix500 menu and type the 6-digit code it shows.
 
 The rest of this README covers the full project (the CLI scan pipeline,
 the menu bar app's own profile system, hardware-button scanning, and the
@@ -495,7 +496,7 @@ attempts), and send it to `POST /pair`:
     curl -s -X POST -H "Content-Type: application/json" -d '{"code": "123456", "client": "curl"}' http://127.0.0.1:8765/pair
 
 The answer is `{"ok": true, "token": "..."}`. Dossiary does this for you:
-it asks for the code the first time it scans. A wrong or expired code gets
+its scan dialog shows a code field the first time. A wrong or expired code gets
 `403`; a scan without a valid `Authorization: Bearer <token>` header gets
 `401`. Only SHA-256 hashes of the tokens are kept, in
 `~/Library/Application Support/scanix500/paired_browsers.json`;
@@ -543,17 +544,24 @@ your files directly, so that's outside what the bridge protects against.
 
 ### Dossiary integration
 
-[Dossiary](https://github.com/AarneAarebye/Dossiary) (a separate app) has
-its own "Scan"/"Scan Multi" toolbar buttons that call this bridge. Since scanix500 0.3.0
-Dossiary must pair first (Dossiary v1.43.0 and later ask for the code;
-older versions get `401`). Before that, as of Dossiary v1.18.0: it health-probes the bridge on
-the default port, calls the parameterized `POST /scan` endpoint directly
-with the settings each button wants, and reads `files` to write the scan
-into whichever library's `inbox/` is currently open. There's no profile
-to create and no name to keep in sync — just run `scanix500-menubar` and
-Dossiary's Scan/Scan Multi buttons auto-connect on first click, with no
-manual URL entry unless the bridge is running on a non-default port (set
-via Dossiary's Field Settings, `scan_bridge_url`).
+[Dossiary](https://github.com/AarneAarebye/Dossiary) (a separate app)
+scans through this bridge from its **📷 Scan** dialog. Since Dossiary's
+scan dialog (the release after v1.43.0), Dossiary:
+
+- finds the bridge on `localhost:8765` by itself (a bridge on another port
+  can be entered in the dialog or in Field Settings, `scan_bridge_url`);
+- lists it as "ScanSnap iX500", next to any scanners
+  [dossiary-scan-helper](https://github.com/AarneAarebye/dossiary-scan-helper)
+  offers on port 8766;
+- pairs inline the first time (a code field in the dialog);
+- calls the parameterized `POST /scan` with "split on blank pages" as the
+  one setting, and writes the returned `files` into the open library's
+  `inbox/`.
+
+**📸 Scan Multi** opens the same dialog with "split on blank pages"
+ticked. Dossiary v1.43.0 pairs through a separate dialog instead; older
+versions can't pair and get `401`. There's no profile to create and no
+name to keep in sync — just run `scanix500-menubar`.
 
 Optionally, change **"Set Bridge Scan Folder…"** if you don't want the
 safety-net copy landing in `~/Documents/Scans`.
