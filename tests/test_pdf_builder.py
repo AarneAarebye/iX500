@@ -45,7 +45,7 @@ def test_build_pdf_ocr_uses_configured_language(tmp_path):
     images = [_content_image()]
     output_path = tmp_path / "out.pdf"
 
-    def fake_run(cmd, check, capture_output):
+    def fake_run(cmd, check, capture_output, timeout=None):
         Path(cmd[-1]).write_bytes(Path(cmd[-2]).read_bytes())
         return None
 
@@ -119,7 +119,7 @@ def test_bw_and_gray_pages_are_not_converted_to_color(tmp_path):
 def test_build_pdf_ocr_straightens_slight_tilts(tmp_path):
     # The driver's swdeskew is off (it rotated a straight sheet by 20°);
     # ocrmypdf --deskew straightens only slight tilts and leaves large ones.
-    def fake_run(cmd, check, capture_output):
+    def fake_run(cmd, check, capture_output, timeout=None):
         Path(cmd[-1]).write_bytes(Path(cmd[-2]).read_bytes())
         return None
 
@@ -134,7 +134,7 @@ def test_ocr_pdf_runs_ocrmypdf_on_the_whole_file(tmp_path):
     build_pdf([_content_image(), _content_image()], src, ocr=False)
     out = tmp_path / "out.pdf"
 
-    def fake_run(cmd, check, capture_output):
+    def fake_run(cmd, check, capture_output, timeout=None):
         Path(cmd[-1]).write_bytes(Path(cmd[-2]).read_bytes())
 
     with patch("scanix500.pdf_builder.subprocess.run", side_effect=fake_run) as run:
@@ -148,7 +148,7 @@ def test_ocr_pdf_default_languages(tmp_path):
     src = tmp_path / "in.pdf"
     build_pdf([_content_image()], src, ocr=False)
 
-    def fake_run(cmd, check, capture_output):
+    def fake_run(cmd, check, capture_output, timeout=None):
         Path(cmd[-1]).write_bytes(Path(cmd[-2]).read_bytes())
 
     with patch("scanix500.pdf_builder.subprocess.run", side_effect=fake_run) as run:
@@ -164,7 +164,7 @@ def test_ocr_pdf_falls_back_page_by_page(tmp_path):
     build_pdf([_content_image(), _content_image()], src, ocr=False)
     calls = []
 
-    def fake_run(cmd, check, capture_output):
+    def fake_run(cmd, check, capture_output, timeout=None):
         calls.append(cmd)
         if len(calls) in (1, 3):  # whole file, then page 2
             raise subprocess_module.CalledProcessError(1, cmd)
@@ -181,3 +181,20 @@ def test_ocr_pdf_raises_when_ocrmypdf_is_missing(tmp_path):
     with patch("scanix500.pdf_builder.subprocess.run", side_effect=FileNotFoundError(2, "no", "ocrmypdf")):
         with pytest.raises(OcrFailed):
             ocr_pdf(src, tmp_path / "out.pdf", [])
+
+
+def test_ocr_pdf_timeouts_count_as_failures(tmp_path):
+    src = tmp_path / "in.pdf"
+    build_pdf([_content_image(), _content_image()], src, ocr=False)
+    calls = []
+
+    def fake_run(cmd, check, capture_output, timeout=None):
+        calls.append(timeout)
+        if len(calls) in (1, 3):  # whole file, then page 2
+            raise subprocess_module.TimeoutExpired(cmd, timeout)
+        Path(cmd[-1]).write_bytes(Path(cmd[-2]).read_bytes())
+
+    with patch("scanix500.pdf_builder.subprocess.run", side_effect=fake_run):
+        ocr_pdf(src, tmp_path / "out.pdf", ["deu"])
+    assert calls == [30 * 60, 10 * 60, 10 * 60]
+    assert len(PdfReader(str(tmp_path / "out.pdf")).pages) == 2

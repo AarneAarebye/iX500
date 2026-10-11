@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import os
 import re
 import secrets
 import shutil
@@ -28,6 +29,9 @@ logger = logging.getLogger(__name__)
 
 JOB_ID_RE = re.compile(r"\A[A-Za-z0-9_-]{22,}\Z")
 RETENTION_SECONDS = 7 * 24 * 3600
+ORPHAN_SECONDS = 60
+RETRY_SECONDS = 5
+REQUIRED_META = ('name', 'pages', 'languages', 'created_at', 'state')
 
 
 def default_ocr_jobs_path() -> Path:
@@ -44,6 +48,7 @@ class OcrJobQueue:
         self._lock = threading.Lock()
         self._wake = threading.Condition(self._lock)
         self._stopping = False
+        self._pending = False
         self._thread: threading.Thread | None = None
         self._root.mkdir(parents=True, exist_ok=True)
         # A job that was running when the app quit starts again from the queue.
@@ -51,6 +56,7 @@ class OcrJobQueue:
             if meta["state"] == "running":
                 meta["state"] = "queued"
                 self._write_meta(job_id, meta)
+        self._pending = any(m["state"] == "queued" for _, m in self._all())
 
     # -- storage ------------------------------------------------------------
     def _dir(self, job_id: str) -> Path:
@@ -58,9 +64,12 @@ class OcrJobQueue:
 
     def _read_meta(self, job_id: str) -> dict | None:
         try:
-            return json.loads((self._dir(job_id) / "meta.json").read_text())
+            meta = json.loads((self._dir(job_id) / "meta.json").read_text())
         except (OSError, ValueError):
             return None
+        if not isinstance(meta, dict) or any(k not in meta for k in REQUIRED_META):
+            return None  # broken: treated as not there
+        return meta
 
     def _write_meta(self, job_id: str, meta: dict) -> None:
         tmp = self._dir(job_id) / "meta.json.tmp"
@@ -81,9 +90,19 @@ class OcrJobQueue:
 
     def _expire(self) -> None:
         now = self._clock()
-        for job_id, meta in self._all():
-            if now - meta["created_at"] > self._retention:
-                self._delete(job_id)
+        for d in list(self._root.iterdir()):
+            if not (d.is_dir() and JOB_ID_RE.fullmatch(d.name)):
+                continue
+            meta = self._read_meta(d.name)
+            if meta is None:
+                try:
+                    age = now - d.stat().st_mtime
+                except OSError:
+                    continue
+                if age > ORPHAN_SECONDS:
+                    self._delete(d.name)
+            elif meta["state"] != "running" and now - meta["created_at"] > self._retention:
+                self._delete(d.name)
 
     # -- protocol -----------------------------------------------------------
     def submit(self, pdf_path: Path, name: str, pages: int, languages: list[str], copy_to: str | None = None) -> str:
@@ -94,6 +113,7 @@ class OcrJobQueue:
             self._write_meta(job_id, {"name": name, "pages": pages, "languages": list(languages),
                                       "created_at": self._clock(), "state": "queued", "message": None,
                                       "copy_to": copy_to})
+            self._pending = True
             self._wake.notify_all()
         return job_id
 
@@ -107,7 +127,11 @@ class OcrJobQueue:
             if meta is None:
                 return gone
             if meta["state"] == "done":
-                data = (self._dir(job_id) / "result.pdf").read_bytes()
+                try:
+                    data = (self._dir(job_id) / "result.pdf").read_bytes()
+                except OSError:
+                    self._delete(job_id)
+                    return 500, error_body("The searchable version of this scan is missing.")
                 self._delete(job_id)
                 return 200, {"ok": True, "files": [{"name": meta["name"], "pages": meta["pages"],
                                                      "data": base64.b64encode(data).decode("ascii")}]}
@@ -140,29 +164,57 @@ class OcrJobQueue:
             meta["state"], meta["message"] = "failed", f"The scan couldn't be made searchable: {e}"
         if meta["state"] == "done" and meta.get("copy_to"):
             # Before "done" is visible, so a fetch can't delete the job first.
+            tmp = meta["copy_to"] + ".tmp"
             try:
-                shutil.copyfile(dst, meta["copy_to"])
+                shutil.copyfile(dst, tmp)
+                os.replace(tmp, meta["copy_to"])
             except OSError:
-                pass  # the safety-net copy stays the plain scan -- not fatal
-        with self._lock:
-            if self._dir(job_id).exists():
-                self._write_meta(job_id, meta)
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass  # the safety-net copy stays the plain scan -- not fatal
+        try:
+            with self._lock:
+                if self._dir(job_id).exists():
+                    self._write_meta(job_id, meta)
+        except Exception:  # noqa: BLE001
+            logger.exception("Couldn't record the result of OCR job %s", job_id)
+            try:
+                with self._lock:
+                    meta["state"] = "failed"
+                    meta["message"] = "The scan couldn't be made searchable (its result couldn't be saved)."
+                    self._write_meta(job_id, meta)
+            except Exception:  # noqa: BLE001
+                logger.exception("Couldn't mark OCR job %s failed", job_id)
         return True
 
     def start(self) -> None:
         if self._thread:
             return
+        with self._lock:
+            self._stopping = False
+            self._pending = True  # look once at what is on disk
 
         def loop():
             while True:
                 with self._lock:
+                    while not self._stopping and not self._pending:
+                        self._wake.wait(timeout=60)
                     if self._stopping:
                         return
-                if not self.run_next():
+                    self._pending = False
+                try:
+                    while self.run_next():
+                        with self._lock:
+                            if self._stopping:
+                                return
+                except Exception:  # noqa: BLE001 - the worker must not die
+                    logger.exception("OCR worker error; retrying shortly")
                     with self._lock:
                         if self._stopping:
                             return
-                        self._wake.wait(timeout=60)
+                        self._wake.wait(timeout=RETRY_SECONDS)
+                        self._pending = True
 
         self._thread = threading.Thread(target=loop, daemon=True, name="scanix500-ocr-jobs")
         self._thread.start()

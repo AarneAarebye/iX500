@@ -134,7 +134,7 @@ def test_copy_to_happens_before_the_job_is_fetchable(tmp_path, monkeypatch):
     real = mod.shutil.copyfile
 
     def spy(src, dst, *a, **k):
-        if str(dst) == str(safety):
+        if str(dst) == str(safety) + ".tmp":
             seen["fetch_during_copy"] = q.fetch(job)  # lock is free here
         return real(src, dst, *a, **k)
 
@@ -143,3 +143,141 @@ def test_copy_to_happens_before_the_job_is_fetchable(tmp_path, monkeypatch):
     assert seen["fetch_during_copy"][0] == 202  # still not "done" while copying
     assert q.fetch(job)[0] == 200
     assert safety.read_bytes().endswith(b"%SEARCHABLE ")
+
+
+def test_no_lost_wakeup_between_run_next_and_wait(tmp_path):
+    done = threading.Event()
+
+    def ocr(src, dst, languages):
+        fake_ocr(src, dst, languages)
+        if Path(src).read_bytes() == b"%PDF-1.4 second":
+            done.set()
+
+    q, _ = make(tmp_path, ocr=ocr)
+    second = tmp_path / "second.pdf"
+    second.write_bytes(b"%PDF-1.4 second")
+    orig = q.run_next
+    injected = []
+
+    def hooked():
+        r = orig()
+        if not r and not injected:
+            injected.append(q.submit(second, "second.pdf", 1, []))  # right after "nothing queued"
+        return r
+
+    q.run_next = hooked
+    q.start()
+    try:
+        q.submit(plain(tmp_path), "scan.pdf", 1, [])
+        assert done.wait(timeout=10)  # far below the 60 s wait timeout
+    finally:
+        q.stop()
+
+
+def test_worker_survives_an_exception_and_stop_then_start_works(tmp_path, monkeypatch):
+    import scanix500.menubar.ocr_jobs as mod
+    monkeypatch.setattr(mod, "RETRY_SECONDS", 0.05)
+    done = threading.Event()
+
+    def ocr(src, dst, languages):
+        fake_ocr(src, dst, languages)
+        done.set()
+
+    q, _ = make(tmp_path, ocr=ocr)
+    orig = q.run_next
+    calls = []
+
+    def flaky():
+        calls.append(1)
+        if len(calls) == 1:
+            raise OSError("disk full")
+        return orig()
+
+    q.run_next = flaky
+    q.start()
+    q.submit(plain(tmp_path), "scan.pdf", 1, [])
+    assert done.wait(timeout=10)
+    q.stop()
+    done.clear()
+    q.start()  # restart after stop
+    try:
+        q.submit(plain(tmp_path), "again.pdf", 1, [])
+        assert done.wait(timeout=10)
+    finally:
+        q.stop()
+
+
+def test_broken_meta_is_skipped_not_fatal(tmp_path):
+    q, clock = make(tmp_path)
+    good = q.submit(plain(tmp_path), "scan.pdf", 1, [])
+    bad = tmp_path / "jobs" / ("b" * 22)
+    bad.mkdir()
+    (bad / "meta.json").write_text(json.dumps({"name": "x"}))
+    assert q.fetch("b" * 22)[0] == 404
+    assert q.run_next() is True and q.fetch(good)[0] == 200
+
+
+def test_expiry_skips_running_jobs(tmp_path):
+    q, clock = make(tmp_path)
+    job = q.submit(plain(tmp_path), "scan.pdf", 1, [])
+    meta = tmp_path / "jobs" / job / "meta.json"
+    data = json.loads(meta.read_text())
+    data["state"] = "running"
+    meta.write_text(json.dumps(data))
+    clock.now += 8 * 24 * 3600
+    assert q.fetch(job)[0] == 202
+    assert (tmp_path / "jobs" / job).exists()
+
+
+def test_orphan_dirs_without_meta_are_swept_when_old(tmp_path):
+    import os
+    q, clock = make(tmp_path)
+    old, fresh = tmp_path / "jobs" / ("o" * 22), tmp_path / "jobs" / ("f" * 22)
+    for d in (old, fresh):
+        d.mkdir()
+        (d / "input.pdf").write_bytes(b"x")
+    os.utime(old, (clock.now - 120, clock.now - 120))
+    os.utime(fresh, (clock.now - 5, clock.now - 5))
+    q.fetch("z" * 22)  # any call runs the sweep
+    assert not old.exists() and fresh.exists()
+
+
+def test_done_job_with_missing_result_answers_500(tmp_path):
+    q, _ = make(tmp_path)
+    job = q.submit(plain(tmp_path), "scan.pdf", 1, [])
+    q.run_next()
+    (tmp_path / "jobs" / job / "result.pdf").unlink()
+    status, body = q.fetch(job)
+    assert status == 500 and body["ok"] is False
+    assert q.fetch(job)[0] == 404
+
+
+def test_copy_to_is_atomic_and_leaves_no_tmp(tmp_path, monkeypatch):
+    import scanix500.menubar.ocr_jobs as mod
+    q, _ = make(tmp_path)
+    safety = plain(tmp_path, "safety.pdf")
+    q.submit(safety, "safety.pdf", 1, [], copy_to=str(safety))
+    replaced = []
+    real = mod.os.replace
+    monkeypatch.setattr(mod.os, "replace", lambda a, b: (replaced.append((str(a), str(b))), real(a, b))[1])
+    q.run_next()
+    assert (str(safety) + ".tmp", str(safety)) in replaced
+    assert not Path(str(safety) + ".tmp").exists()
+    assert safety.read_bytes().endswith(b"%SEARCHABLE ")
+
+
+def test_failed_final_write_marks_job_failed(tmp_path, monkeypatch):
+    q, _ = make(tmp_path)
+    job = q.submit(plain(tmp_path), "scan.pdf", 1, [])
+    real = q._write_meta
+    n = []
+
+    def flaky(job_id, meta):
+        n.append(meta["state"])
+        if meta["state"] == "done":
+            raise OSError("disk full")
+        return real(job_id, meta)
+
+    monkeypatch.setattr(q, "_write_meta", flaky)
+    q.run_next()
+    assert q.fetch(job)[0] == 500

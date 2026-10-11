@@ -55,9 +55,13 @@ class OcrFailed(Exception):
     """No searchable PDF could be made (ocrmypdf missing, the input unreadable)."""
 
 
-def _ocrmypdf(input_path: Path, output_path: Path, languages: str) -> None:
+OCR_WHOLE_FILE_TIMEOUT = 30 * 60
+OCR_PAGE_TIMEOUT = 10 * 60
+
+
+def _ocrmypdf(input_path: Path, output_path: Path, languages: str, timeout: float) -> None:
     subprocess.run(["ocrmypdf", "-l", languages, "--deskew", str(input_path), str(output_path)],
-                   check=True, capture_output=True)
+                   check=True, capture_output=True, timeout=timeout)
 
 
 def ocr_pdf(input_path: Path, output_path: Path, languages: list[str]) -> None:
@@ -66,11 +70,11 @@ def ocr_pdf(input_path: Path, output_path: Path, languages: list[str]) -> None:
     read without text. Raises OcrFailed when nothing could be made."""
     codes = "+".join(dict.fromkeys(languages)) or OCR_LANGUAGE
     try:
-        _ocrmypdf(input_path, output_path, codes)
+        _ocrmypdf(input_path, output_path, codes, OCR_WHOLE_FILE_TIMEOUT)
         return
     except FileNotFoundError as e:
         raise OcrFailed("ocrmypdf isn't installed, so the scan couldn't be made searchable.") from e
-    except (subprocess.CalledProcessError, OSError):
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
         logger.warning("OCR of %s failed as a whole; trying page by page", input_path)
     try:
         reader = PdfReader(str(input_path))
@@ -86,11 +90,11 @@ def ocr_pdf(input_path: Path, output_path: Path, languages: list[str]) -> None:
                 writer.write(f)
             done = Path(tmp) / f"page_{i}.ocr.pdf"
             try:
-                _ocrmypdf(single, done, codes)
+                _ocrmypdf(single, done, codes, OCR_PAGE_TIMEOUT)
                 page_paths.append(done)
             except FileNotFoundError as e:
                 raise OcrFailed("ocrmypdf isn't installed, so the scan couldn't be made searchable.") from e
-            except (subprocess.CalledProcessError, OSError):
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
                 page_paths.append(single)  # this page stays without text
         _merge_pdfs(page_paths, output_path)
 
