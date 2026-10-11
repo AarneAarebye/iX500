@@ -131,9 +131,12 @@ Run these by hand against the real iX500 after any change to `capture.py` or
       `page_height=297` (mm) — confirmed setting `page_width`/`page_height`
       auto-syncs the scan area (`br_x`/`br_y`) on real hardware, and a real
       scan produced a PDF page at exactly 210.0x297.0mm.
-- [x] **Changed in 0.4.0:** `swdeskew` is off again -- it rotated a
-      straight-fed, once-folded sheet by about 20°; ocrmypdf `--deskew`
-      straightens slight tilts instead. `swcrop` and `ald` stay on.
+- [x] **Changed in 0.4.0:** `swdeskew` and `swcrop` are off again --
+      `swdeskew` rotated a straight-fed, once-folded sheet by about 20°, and
+      `swcrop` cut 13-35 mm of text off a letter's sides. ocrmypdf
+      `--deskew` straightens slight tilts, `trim.py` (background = even
+      *and* gray) finds the sides, and `snap.py` rounds pages close to a
+      standard size to exactly that size. `ald` stays on.
 - [x] **Added 2026-10-09, hardware-verified:** the driver's software deskew and crop
       (`swdeskew`, `swcrop`) and automatic length detection (`ald`) are
       on, so each page comes out straightened at its paper's own size (an
@@ -471,9 +474,12 @@ and no query string); the contract is dossiary-scan-helper's `PROTOCOL.md`.
 - `scripts/run-conformance.sh [path to dossiary-scan-helper]` runs that
   repo's conformance suite against `scanix500-bridge --fake-scanners` (seven
   fake scanners, pairing code `000000`, testing only; 43 tests pass).
-- Pages are no longer straightened by the scanner driver (`swdeskew`): it
-  rotated a straight-fed, folded sheet by about 20°. ocrmypdf's `--deskew`
-  straightens slight tilts while adding the text layer instead.
+- Pages are no longer straightened or cropped by the scanner driver:
+  `swdeskew` rotated a straight-fed, folded sheet by about 20°, and
+  `swcrop` cut text off a letter's sides. ocrmypdf's `--deskew` straightens
+  slight tilts while adding the text layer, scanix500's own trim cuts off
+  only the scanner's gray background (never white paper), and a page within
+  5 mm of A4, A5, A6, Letter or Legal comes out at exactly that size.
 
 ### Use (version 1)
 

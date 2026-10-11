@@ -97,7 +97,7 @@ TDD steps.
 - **Pages come out at their paper's size (0.3.0)** -- the scan area stays
   A4, and three steps shrink it to the sheet: `PySaneDevice` turns on the
   driver's `ald` (the scanner's sensor ends the page at the paper's end)
-  and `swcrop` (and, until 0.4.0, `swdeskew` -- see below), and `cli.py` then runs `trim.py`'s
+  and, until 0.4.0, `swcrop`/`swdeskew` (both off since -- see below), and `cli.py` then runs `trim.py`'s
   `trim_background()` on every page before the blank filter. The trim is
   needed because `swcrop` can't find a narrow sheet's side edges: the ADF
   background is as light as white paper. It's told apart by texture
@@ -130,7 +130,18 @@ TDD steps.
   sheet it rotated the page by about 20 degrees (corners filled with one flat
   gray, 214); with it off the same sheet came out straight and still cropped.
   ocrmypdf's `--deskew` (`pdf_builder.py`) straightens slight tilts instead --
-  3 degrees came out straight, 20 degrees was left alone. **`trim.py` never
+  3 degrees came out straight, 20 degrees was left alone. **The driver's
+  `swcrop` is off too** (it cut 13-35 mm of text off a real letter's sides),
+  and `trim.py` now counts a column as background only when it is both
+  flatter than 1.5 (standard deviation on a 1/4-size copy) and no brighter
+  than 242: measured with the driver's processing off, the background is
+  0.3-0.5 at 233-241, smooth office paper 2.0-2.7 at 248 (it used to be
+  trimmed away), textured paper 6-10. **`snap.py`** then gives a page within
+  5 mm of A4, A5, A6, Letter or Legal (either way round) exactly that size,
+  padding with white or cropping, centred; a real A5 sheet came out 152 mm
+  wide after the trim and 148 x 210 mm after snapping. A Paper size choice
+  in Dossiary's dialog would need a protocol field and is a separate
+  project. **`trim.py` never
   leaves less than 30 mm of a page** (`_MIN_PAPER_MM`): a blank side reads as
   even almost everywhere and was once trimmed to 5 pixels, which then no
   longer looked blank and ended up in the PDF.

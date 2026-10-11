@@ -1,14 +1,13 @@
 """Trims the scanner's background from the sides of a scanned page.
 
-The driver's own software crop (`swcrop`) can't find the side edges of a
-narrow sheet: the iX500's ADF background is about as light as white paper
-(233-247 vs ~225 on a real A5 scan). What does tell them apart is texture.
-The background is perfectly even, so a column of it barely varies top to
-bottom (standard deviation ~2-3), while paper -- even a blank margin or
-the blank back of a sheet -- varies more (6-10, measured on both sides of
-a real A5 scan). An A5 sheet in the A4-wide scan area leaves such an even
-strip on one side: on the right of the front, mirrored to the left on the
-back.
+The driver's own crop (`swcrop`) is off: it cut into a real letter's
+text. Background is told from paper by texture and brightness together.
+With the driver's processing off, a column of the iX500's ADF background
+barely varies top to bottom (standard deviation 0.3-0.5, measured
+2026-10-11 in gray and colour) and sits at 233-241. Paper varies more --
+recycled or textured paper 6-10 -- and smooth office paper, nearly as even
+(2.0-2.7), is far brighter (248). A narrow sheet in the A4-wide scan area
+leaves such a background strip at its sides.
 
 Length needs nothing here: the scanner's own paper-end sensor (`ald`)
 already ends each page where the paper ends.
@@ -23,9 +22,11 @@ from PIL import Image, ImageStat
 # Columns are measured on a 1/4-size copy, which is plenty for an edge and
 # keeps a 300 DPI page fast.
 _SCALE = 4
-# A column whose brightness varies less than this top to bottom is
-# background. Real paper measured 6-10, the background 2-3.
-_EVEN_STDDEV = 4.0
+# A column is background when its brightness varies less than this top to
+# bottom AND it is no brighter than _BACKGROUND_MAX. Measured: background
+# 0.3-0.5 at 233-241; paper 6-10, smooth white paper 2.0-2.7 at 248.
+_EVEN_STDDEV = 1.5
+_BACKGROUND_MAX = 242
 # Only a strip at least this wide is trimmed, so a narrow even area inside
 # a document (a ruled border, a blank gutter) is never taken for background.
 _MIN_STRIP_MM = 8.0
@@ -50,6 +51,10 @@ def _even_runs(even: list[bool]) -> list[tuple[int, int]]:
     return runs
 
 
+def _is_background(column: ImageStat.Stat) -> bool:
+    return column.stddev[0] < _EVEN_STDDEV and column.mean[0] <= _BACKGROUND_MAX
+
+
 def trim_background(image: Image.Image) -> Image.Image:
     """Returns the page without an even background strip at its left or
     right side, or the page unchanged when it has none. Keeps the image's
@@ -61,7 +66,7 @@ def trim_background(image: Image.Image) -> Image.Image:
         return image
 
     even = [
-        ImageStat.Stat(small.crop((x, 0, x + 1, height))).stddev[0] < _EVEN_STDDEV
+        _is_background(ImageStat.Stat(small.crop((x, 0, x + 1, height))))
         for x in range(width)
     ]
     min_columns = math.ceil(_MIN_STRIP_MM / 25.4 * dpi / _SCALE)

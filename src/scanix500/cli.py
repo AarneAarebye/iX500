@@ -8,6 +8,7 @@ from scanix500.capture import PagePair, PySaneDevice, capture_pages
 from scanix500.errors import MultiFeedError, NoPagesScannedError, ScannerNotFoundError, ScannerSetupError
 from scanix500.pdf_builder import build_pdf
 from scanix500.router import compute_output_paths
+from scanix500.snap import snap_to_standard_size
 from scanix500.trim import trim_background
 
 
@@ -58,11 +59,12 @@ def main(argv: list[str] | None = None) -> int:
         exit_code = 0
 
     # Trim the scanner's background from the sides first, so an A5 sheet
-    # comes out at A5 width and the blank check only sees the paper.
-    pages = [
-        PagePair(trim_background(p.front), None if p.back is None else trim_background(p.back))
-        for p in pages
-    ]
+    # comes out at A5 width and the blank check only sees the paper; then a
+    # page within a few mm of a standard size gets exactly that size.
+    def fit(image):
+        return snap_to_standard_size(trim_background(image))
+
+    pages = [PagePair(fit(p.front), None if p.back is None else fit(p.back)) for p in pages]
 
     if args.skip_blank_filter:
         partitions = [

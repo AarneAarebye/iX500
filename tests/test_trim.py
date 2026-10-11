@@ -26,6 +26,13 @@ def _page(columns):
             for y in range(height):
                 if kind == "background":
                     px[x, y] = 233
+                elif kind == "smooth":
+                    # Smooth, bright office paper: as even as 2-3, but far
+                    # brighter than the background (measured 248 vs 233-241).
+                    key = (x // 8, y // 8)
+                    if key not in patch:
+                        patch[key] = max(0, min(255, int(rng.gauss(248, 2.5))))
+                    px[x, y] = patch[key]
                 else:
                     key = (x // 8, y // 8)
                     if key not in patch:
@@ -73,3 +80,10 @@ def test_never_trims_a_page_down_to_a_sliver():
     # blank check then kept. Less than 30 mm left means: keep the page.
     page = _page([("background", 1100), ("paper", 20), ("background", 1100)])
     assert trim_background(page).size == page.size
+
+
+def test_keeps_a_smooth_bright_paper_margin():
+    # A real letter's blank right margin measured as even as 2.0-2.7 but at
+    # 248; the background is flatter (0.3-0.5) and grayer (233-241).
+    im = _page([("paper", 900), ("smooth", 300)])
+    assert trim_background(im).size == im.size

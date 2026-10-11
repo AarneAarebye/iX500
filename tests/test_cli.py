@@ -171,3 +171,14 @@ def test_pysane_device_wraps_setting_errors():
     ):
         with pytest.raises(ScannerSetupError, match="refused a setting"):
             PySaneDevice()
+
+
+def test_cli_snaps_each_side_to_a_standard_size(tmp_path):
+    pages = [PagePair(_content_image(), None)]
+    with patch("scanix500.cli.PySaneDevice"), patch(
+        "scanix500.cli.capture_pages", return_value=pages
+    ), patch("scanix500.cli.snap_to_standard_size", side_effect=lambda im: im) as snap, patch(
+        "scanix500.cli.build_pdf"
+    ):
+        main([str(tmp_path), "--simplex", "--skip-ocr", "--skip-blank-filter"])
+    assert snap.call_count == 1
