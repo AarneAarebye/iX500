@@ -77,6 +77,14 @@ def _build_argv(profile: Profile) -> list[str]:
         argv.append("--skip-ocr")
     if profile.split_on_blank:
         argv.append("--split-on-blank")
+    if not profile.duplex:
+        argv.append("--simplex")
+    if profile.color_mode != "color":
+        argv += ["--mode", profile.color_mode]
+    if profile.resolution != 300:
+        argv += ["--resolution", str(profile.resolution)]
+    if profile.keep_blank_pages:
+        argv.append("--keep-blank-pages")
     return argv
 
 

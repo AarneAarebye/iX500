@@ -67,3 +67,24 @@ def test_filter_pages_without_split_on_blank_ignores_separator_boundary():
         doc2_page.front,
         doc2_page.back,
     ]
+
+
+def test_simplex_pairs_have_no_back():
+    pages = [PagePair(_content_image(), None), PagePair(_blank_image(), None), PagePair(_content_image(), None)]
+    assert [len(p) for p in filter_pages(pages)] == [2]
+
+
+def test_simplex_blank_sheet_splits():
+    pages = [PagePair(_content_image(), None), PagePair(_blank_image(), None), PagePair(_content_image(), None)]
+    assert [len(p) for p in filter_pages(pages, split_on_blank=True)] == [1, 1]
+
+
+def test_keep_blank_pages_keeps_blank_backs_but_still_splits():
+    pages = [PagePair(_content_image(), _blank_image()), PagePair(_blank_image(), _blank_image()), PagePair(_content_image(), _blank_image())]
+    result = filter_pages(pages, split_on_blank=True, drop_blank_pages=False)
+    assert [len(p) for p in result] == [2, 2]
+
+
+def test_keep_blank_pages_without_split_keeps_everything():
+    pages = [PagePair(_content_image(), _blank_image()), PagePair(_blank_image(), _blank_image())]
+    assert [len(p) for p in filter_pages(pages, drop_blank_pages=False)] == [4]

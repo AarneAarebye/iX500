@@ -2,6 +2,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from scanix500.bw import to_black_and_white
 from scanix500.blank_filter import filter_pages
 from scanix500.capture import PagePair, PySaneDevice, capture_pages
 from scanix500.errors import MultiFeedError, NoPagesScannedError, ScannerNotFoundError
@@ -16,6 +17,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--skip-blank-filter", action="store_true")
     parser.add_argument("--skip-ocr", action="store_true")
     parser.add_argument("--split-on-blank", action="store_true")
+    parser.add_argument("--simplex", action="store_true", help="scan the front of each sheet only")
+    parser.add_argument("--mode", choices=("color", "gray", "bw"), default="color")
+    parser.add_argument("--resolution", type=int, default=300)
+    parser.add_argument("--keep-blank-pages", action="store_true",
+                        help="with --split-on-blank: keep blank pages, drop only blank separator sheets")
     return parser.parse_args(argv)
 
 
@@ -23,8 +29,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
 
     try:
-        device = PySaneDevice()
-        pages = capture_pages(device)
+        device = PySaneDevice(duplex=not args.simplex, color_mode=args.mode, resolution=args.resolution)
+        pages = capture_pages(device, duplex=not args.simplex)
     except ScannerNotFoundError as e:
         print(f"Scanner not found: {e}", file=sys.stderr)
         return 1
@@ -47,18 +53,26 @@ def main(argv: list[str] | None = None) -> int:
 
     # Trim the scanner's background from the sides first, so an A5 sheet
     # comes out at A5 width and the blank check only sees the paper.
-    pages = [PagePair(trim_background(p.front), trim_background(p.back)) for p in pages]
+    pages = [
+        PagePair(trim_background(p.front), None if p.back is None else trim_background(p.back))
+        for p in pages
+    ]
 
     if args.skip_blank_filter:
         partitions = [
-            [img for pair in pages for img in (pair.front, pair.back)]
+            [img for pair in pages for img in (pair.front, pair.back) if img is not None]
         ]
     else:
-        partitions = filter_pages(pages, split_on_blank=args.split_on_blank)
+        partitions = filter_pages(
+            pages, split_on_blank=args.split_on_blank, drop_blank_pages=not args.keep_blank_pages
+        )
 
     if not partitions:
         print("All pages were blank; no PDF written.")
         return exit_code
+
+    if args.mode == "bw":
+        partitions = [[to_black_and_white(img) for img in images] for images in partitions]
 
     output_paths = compute_output_paths(args.destination, len(partitions))
     try:

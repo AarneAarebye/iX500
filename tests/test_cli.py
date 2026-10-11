@@ -99,3 +99,32 @@ def test_main_processes_partial_batch_after_multi_feed(tmp_path, capsys):
     assert len(output_files) == 1
     assert len(PdfReader(str(output_files[0])).pages) == 2
     assert "Multi-feed detected at sheet 2" in capsys.readouterr().err
+
+
+def test_cli_passes_scan_settings_to_the_device(tmp_path):
+    pages = [PagePair(_content_image(), None)]
+    with patch("scanix500.cli.PySaneDevice") as device_cls, patch(
+        "scanix500.cli.capture_pages", return_value=pages
+    ) as capture, patch("scanix500.cli.build_pdf"):
+        main([str(tmp_path), "--simplex", "--mode", "gray", "--resolution", "600", "--skip-ocr"])
+    device_cls.assert_called_once_with(duplex=False, color_mode="gray", resolution=600)
+    assert capture.call_args.kwargs == {"duplex": False}
+
+
+def test_cli_bw_thresholds_pages_before_building_the_pdf(tmp_path):
+    pages = [PagePair(_content_image(), None)]
+    with patch("scanix500.cli.PySaneDevice"), patch(
+        "scanix500.cli.capture_pages", return_value=pages
+    ), patch("scanix500.cli.build_pdf") as build:
+        main([str(tmp_path), "--simplex", "--mode", "bw", "--skip-ocr", "--skip-blank-filter"])
+    images = build.call_args.args[0]
+    assert {img.mode for img in images} == {"1"}
+
+
+def test_cli_keep_blank_pages_reaches_the_filter(tmp_path):
+    pages = [PagePair(_content_image(), None)]
+    with patch("scanix500.cli.PySaneDevice"), patch(
+        "scanix500.cli.capture_pages", return_value=pages
+    ), patch("scanix500.cli.filter_pages", return_value=[[pages[0].front]]) as filt, patch("scanix500.cli.build_pdf"):
+        main([str(tmp_path), "--split-on-blank", "--keep-blank-pages", "--skip-ocr"])
+    assert filt.call_args.kwargs == {"split_on_blank": True, "drop_blank_pages": False}

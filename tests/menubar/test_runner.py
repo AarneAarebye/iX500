@@ -177,3 +177,12 @@ def test_notification_title_for_a_plain_failure():
     result = ScanResult(ok=False, partial=False, message="Scanner not found", output_paths=[])
 
     assert notification_title(result) == "Scan failed"
+
+
+def test_build_argv_adds_only_non_default_settings():
+    from scanix500.menubar.runner import _build_argv
+    default = _build_argv(Profile(name="p", destination="/d"))
+    assert "--simplex" not in default and "--mode" not in default and "--resolution" not in default
+    argv = _build_argv(Profile(name="p", destination="/d", duplex=False, color_mode="bw",
+                               resolution=600, keep_blank_pages=True))
+    assert argv[1:] == ["/d", "--simplex", "--mode", "bw", "--resolution", "600", "--keep-blank-pages"]

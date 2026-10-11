@@ -14,6 +14,10 @@ class Profile:
     skip_blank_filter: bool = False
     skip_ocr: bool = False
     split_on_blank: bool = False
+    duplex: bool = True
+    color_mode: str = "color"
+    resolution: int = 300
+    keep_blank_pages: bool = False
 
 
 def default_profiles_path() -> Path:

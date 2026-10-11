@@ -28,20 +28,25 @@ def filter_pages(
     *,
     threshold: float = 0.02,
     split_on_blank: bool = False,
+    drop_blank_pages: bool = True,
 ) -> list[list[Image.Image]]:
+    """Groups the pages into documents. A sheet is blank when every side
+    it has is blank (a front-only sheet has no back). With split_on_blank a
+    blank sheet ends the current document and is dropped. With
+    drop_blank_pages (the default) every blank page is dropped; without it,
+    blank pages are kept, except a blank sheet used as a separator."""
     partitions: list[list[Image.Image]] = [[]]
     for pair in pages:
-        front_blank = is_blank(pair.front, threshold)
-        back_blank = is_blank(pair.back, threshold)
+        sides = [pair.front] if pair.back is None else [pair.front, pair.back]
+        blank = [is_blank(img, threshold) for img in sides]
 
-        if front_blank and back_blank:
-            if split_on_blank and partitions[-1]:
+        if all(blank) and split_on_blank:
+            if partitions[-1]:
                 partitions.append([])
             continue
 
-        if not front_blank:
-            partitions[-1].append(pair.front)
-        if not back_blank:
-            partitions[-1].append(pair.back)
+        for img, img_blank in zip(sides, blank):
+            if not (img_blank and drop_blank_pages):
+                partitions[-1].append(img)
 
     return [p for p in partitions if p]

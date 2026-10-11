@@ -110,3 +110,17 @@ def test_find_fujitsu_device_returns_none_when_not_found():
     devices = [("epson:net:1.2.3.4", "EPSON", "Perfection V600", "scanner")]
 
     assert find_fujitsu_device(devices) is None
+
+
+def test_capture_pages_simplex_reads_one_frame_per_sheet():
+    device = FakeSaneDevice(frames=[_img("a"), _img("b"), _img("c")])
+    pages = capture_pages(device, duplex=False)
+    assert len(pages) == 3
+    assert all(p.back is None for p in pages)
+
+
+def test_capture_pages_simplex_jam_keeps_earlier_sheets():
+    device = FakeSaneDevice(frames=[_img("a"), _img("b")], fail_at_frame=2)
+    with pytest.raises(MultiFeedError) as info:
+        capture_pages(device, duplex=False)
+    assert len(info.value.pages_captured) == 1

@@ -9,7 +9,7 @@ from scanix500.errors import MultiFeedError, NoPagesScannedError, ScannerNotFoun
 @dataclass
 class PagePair:
     front: Image.Image
-    back: Image.Image
+    back: Image.Image | None = None
 
 
 class SaneDevice(Protocol):
@@ -20,6 +20,9 @@ class SaneDevice(Protocol):
 
 DEFAULT_RESOLUTION_DPI = 300
 DEFAULT_MODE = "Color"
+# Dossiary's colour modes to SANE's. Black & white is scanned as gray and
+# thresholded later (see bw.py).
+SANE_MODES = {"color": "Color", "gray": "Gray", "bw": "Gray"}
 A4_WIDTH_MM = 210
 A4_HEIGHT_MM = 297
 
@@ -34,7 +37,7 @@ def find_fujitsu_device(devices: list[tuple]) -> str | None:
     return None
 
 
-def capture_pages(device: SaneDevice) -> list[PagePair]:
+def capture_pages(device: SaneDevice, *, duplex: bool = True) -> list[PagePair]:
     device.start()
     pages: list[PagePair] = []
     sheet_index = 0
@@ -50,15 +53,17 @@ def capture_pages(device: SaneDevice) -> list[PagePair]:
             # the fujitsu backend can return SANE_STATUS_JAMMED from a read).
             # Never let this crash out uncaught and lose partial work.
             raise MultiFeedError(sheet_index, pages)
-        try:
-            back = device.read_frame()
-        except StopIteration:
-            # Odd frame count: the front of this sheet arrived but its back
-            # never did, so the pair can't be completed. Treat it as
-            # end-of-batch and keep every complete pair captured so far.
-            break
-        except Exception:
-            raise MultiFeedError(sheet_index, pages)
+        back = None
+        if duplex:
+            try:
+                back = device.read_frame()
+            except StopIteration:
+                # Odd frame count: the front of this sheet arrived but its back
+                # never did, so the pair can't be completed. Treat it as
+                # end-of-batch and keep every complete pair captured so far.
+                break
+            except Exception:
+                raise MultiFeedError(sheet_index, pages)
         sheet_index += 1
         pages.append(PagePair(front, back))
         if device.multi_feed_detected():
@@ -77,7 +82,13 @@ class PySaneDevice:
     this class.
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        duplex: bool = True,
+        color_mode: str = "color",
+        resolution: int = DEFAULT_RESOLUTION_DPI,
+    ):
         try:
             import sane
         except ImportError as e:
@@ -104,13 +115,14 @@ class PySaneDevice:
         except Exception as e:
             raise ScannerNotFoundError(f"Failed to open SANE device: {e}") from e
 
-        self._dev.source = "ADF Duplex"
-        self._dev.resolution = DEFAULT_RESOLUTION_DPI
+        self._dev.source = "ADF Duplex" if duplex else "ADF Front"
+        self._dev.resolution = resolution
         # The backend's own default is "Lineart" (pure 1-bit black & white,
         # not even grayscale) — confirmed against real hardware: an unset
-        # mode silently produced stark B&W output. "Color" matches what a
-        # general-purpose document scanner should default to.
-        self._dev.mode = DEFAULT_MODE
+        # mode silently produced stark B&W output. So the mode is always set
+        # explicitly; "color" is the default for a general-purpose document
+        # scanner (black & white is scanned as gray, see bw.py).
+        self._dev.mode = SANE_MODES[color_mode]
         # Setting page_width/page_height also syncs the scan-area (br_x/br_y)
         # to match — confirmed against real hardware, no separate call needed.
         self._dev.page_width = A4_WIDTH_MM

@@ -98,3 +98,19 @@ def test_build_pdf_uses_image_dpi_for_page_geometry(tmp_path):
     # 100px at 300 DPI = 1/3 inch = 24pt, not the 100pt a 72-DPI default gives.
     assert float(mediabox.width) == pytest.approx(24.0, abs=0.5)
     assert float(mediabox.height) == pytest.approx(24.0, abs=0.5)
+
+
+def test_bw_and_gray_pages_are_not_converted_to_color(tmp_path):
+    bw = Image.new("1", (100, 100), 1)
+    bw.info["dpi"] = (300, 300)
+    gray = Image.new("L", (100, 100), 200)
+    gray.info["dpi"] = (300, 300)
+    out = tmp_path / "out.pdf"
+    build_pdf([bw, gray], out, ocr=False)
+    reader = PdfReader(str(out))
+    spaces = []
+    for page in reader.pages:
+        xobjects = page["/Resources"]["/XObject"]
+        for name in xobjects:
+            spaces.append(xobjects[name].get_object()["/ColorSpace"])
+    assert "/DeviceRGB" not in spaces

@@ -178,3 +178,11 @@ def test_find_profile_returns_matching_profile_or_none():
 
     assert find_profile(profiles, "Documents") == profiles[0]
     assert find_profile(profiles, "Missing") is None
+
+
+def test_profiles_saved_before_the_new_fields_still_load(tmp_path):
+    path = tmp_path / "profiles.json"
+    path.write_text('[{"name": "Old", "destination": "/d", "skip_blank_filter": false, "skip_ocr": false, "split_on_blank": false}]')
+    (tmp_path / ".hardware_button_seeded").touch()
+    [profile] = load_profiles(path)
+    assert (profile.duplex, profile.color_mode, profile.resolution, profile.keep_blank_pages) == (True, "color", 300, False)

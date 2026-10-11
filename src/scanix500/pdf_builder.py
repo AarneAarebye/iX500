@@ -19,7 +19,10 @@ def _save_image_only_pdf(image: Image.Image, path: Path) -> None:
     # Without an explicit resolution Pillow writes 72-DPI page geometry, which
     # turns a 300-DPI A4 scan into a hugely oversized PDF page.
     dpi = image.info.get("dpi", (200, 200))[0]
-    image.convert("RGB").save(path, format="PDF", resolution=dpi)
+    # 1-bit and gray pages stay as they are; converting to RGB would triple
+    # the size of a black & white scan for nothing.
+    page = image if image.mode in ("1", "L") else image.convert("RGB")
+    page.save(path, format="PDF", resolution=dpi)
 
 
 def _merge_pdfs(page_paths: list[Path], output_path: Path) -> None:
