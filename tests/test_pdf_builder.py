@@ -6,7 +6,7 @@ import pytest
 from PIL import Image
 from pypdf import PdfReader
 
-from scanix500.pdf_builder import build_pdf
+from scanix500.pdf_builder import OcrFailed, build_pdf, ocr_pdf
 
 
 def _content_image():
@@ -127,3 +127,57 @@ def test_build_pdf_ocr_straightens_slight_tilts(tmp_path):
         build_pdf([_content_image()], tmp_path / "out.pdf", ocr=True)
 
     assert "--deskew" in mock_run.call_args.args[0]
+
+
+def test_ocr_pdf_runs_ocrmypdf_on_the_whole_file(tmp_path):
+    src = tmp_path / "in.pdf"
+    build_pdf([_content_image(), _content_image()], src, ocr=False)
+    out = tmp_path / "out.pdf"
+
+    def fake_run(cmd, check, capture_output):
+        Path(cmd[-1]).write_bytes(Path(cmd[-2]).read_bytes())
+
+    with patch("scanix500.pdf_builder.subprocess.run", side_effect=fake_run) as run:
+        ocr_pdf(src, out, ["fra", "eng"])
+    cmd = run.call_args.args[0]
+    assert cmd[0] == "ocrmypdf" and cmd[cmd.index("-l") + 1] == "fra+eng" and "--deskew" in cmd
+    assert len(PdfReader(str(out)).pages) == 2
+
+
+def test_ocr_pdf_default_languages(tmp_path):
+    src = tmp_path / "in.pdf"
+    build_pdf([_content_image()], src, ocr=False)
+
+    def fake_run(cmd, check, capture_output):
+        Path(cmd[-1]).write_bytes(Path(cmd[-2]).read_bytes())
+
+    with patch("scanix500.pdf_builder.subprocess.run", side_effect=fake_run) as run:
+        ocr_pdf(src, tmp_path / "out.pdf", [])
+    cmd = run.call_args.args[0]
+    assert cmd[cmd.index("-l") + 1] == "deu+eng"
+
+
+def test_ocr_pdf_falls_back_page_by_page(tmp_path):
+    # The whole-file run fails; each page is tried on its own and a page that
+    # still fails is kept without text.
+    src = tmp_path / "in.pdf"
+    build_pdf([_content_image(), _content_image()], src, ocr=False)
+    calls = []
+
+    def fake_run(cmd, check, capture_output):
+        calls.append(cmd)
+        if len(calls) in (1, 3):  # whole file, then page 2
+            raise subprocess_module.CalledProcessError(1, cmd)
+        Path(cmd[-1]).write_bytes(Path(cmd[-2]).read_bytes())
+
+    with patch("scanix500.pdf_builder.subprocess.run", side_effect=fake_run):
+        ocr_pdf(src, tmp_path / "out.pdf", ["deu"])
+    assert len(calls) == 3 and len(PdfReader(str(tmp_path / "out.pdf")).pages) == 2
+
+
+def test_ocr_pdf_raises_when_ocrmypdf_is_missing(tmp_path):
+    src = tmp_path / "in.pdf"
+    build_pdf([_content_image()], src, ocr=False)
+    with patch("scanix500.pdf_builder.subprocess.run", side_effect=FileNotFoundError(2, "no", "ocrmypdf")):
+        with pytest.raises(OcrFailed):
+            ocr_pdf(src, tmp_path / "out.pdf", [])

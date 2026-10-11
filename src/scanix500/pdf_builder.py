@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 
 from PIL import Image
-from pypdf import PdfWriter
+from pypdf import PdfReader, PdfWriter
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +49,50 @@ def _ocr_single_page(input_path: Path) -> Path:
     except (subprocess.CalledProcessError, FileNotFoundError, OSError):
         logger.warning("OCR failed for %s; including as image-only", input_path)
         return input_path
+
+
+class OcrFailed(Exception):
+    """No searchable PDF could be made (ocrmypdf missing, the input unreadable)."""
+
+
+def _ocrmypdf(input_path: Path, output_path: Path, languages: str) -> None:
+    subprocess.run(["ocrmypdf", "-l", languages, "--deskew", str(input_path), str(output_path)],
+                   check=True, capture_output=True)
+
+
+def ocr_pdf(input_path: Path, output_path: Path, languages: list[str]) -> None:
+    """Makes a searchable copy of an image-only PDF. Tries the whole file
+    first; if that fails, each page on its own, keeping a page OCR can't
+    read without text. Raises OcrFailed when nothing could be made."""
+    codes = "+".join(dict.fromkeys(languages)) or OCR_LANGUAGE
+    try:
+        _ocrmypdf(input_path, output_path, codes)
+        return
+    except FileNotFoundError as e:
+        raise OcrFailed("ocrmypdf isn't installed, so the scan couldn't be made searchable.") from e
+    except (subprocess.CalledProcessError, OSError):
+        logger.warning("OCR of %s failed as a whole; trying page by page", input_path)
+    try:
+        reader = PdfReader(str(input_path))
+    except Exception as e:  # noqa: BLE001
+        raise OcrFailed(f"The scan's PDF couldn't be read: {e}") from e
+    with tempfile.TemporaryDirectory() as tmp:
+        page_paths = []
+        for i, page in enumerate(reader.pages):
+            single = Path(tmp) / f"page_{i}.pdf"
+            writer = PdfWriter()
+            writer.add_page(page)
+            with open(single, "wb") as f:
+                writer.write(f)
+            done = Path(tmp) / f"page_{i}.ocr.pdf"
+            try:
+                _ocrmypdf(single, done, codes)
+                page_paths.append(done)
+            except FileNotFoundError as e:
+                raise OcrFailed("ocrmypdf isn't installed, so the scan couldn't be made searchable.") from e
+            except (subprocess.CalledProcessError, OSError):
+                page_paths.append(single)  # this page stays without text
+        _merge_pdfs(page_paths, output_path)
 
 
 def build_pdf(images: list[Image.Image], output_path: Path, *, ocr: bool = True) -> None:
