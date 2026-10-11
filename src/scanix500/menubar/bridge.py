@@ -140,10 +140,12 @@ class V2Backend(Protocol):
 
 class RealBackend:
     def __init__(self, get_destination: Callable[[], str], trigger: ScanTrigger,
-                 ocr_jobs: OcrJobQueue | None = None):
+                 ocr_jobs: OcrJobQueue | None | bool = None):
         self._get_destination = get_destination
         self._trigger = trigger
-        self._queue = ocr_jobs
+        # None: a queue is made lazily on first use; False: no background OCR at all.
+        self._no_ocr = ocr_jobs is False
+        self._queue = None if ocr_jobs is False else ocr_jobs
         self._queue_lock = threading.Lock()
 
     @property
@@ -157,7 +159,10 @@ class RealBackend:
             return self._queue
 
     def scanners(self) -> list[dict]:
-        return [dict(IX500)]
+        entry = dict(IX500)
+        if self._no_ocr:
+            del entry["ocr"]
+        return [entry]
 
     def scan(self, scanner: dict, settings: dict) -> tuple[int, dict]:
         # ScanBusyError propagates to the handler (409).
@@ -173,6 +178,8 @@ class RealBackend:
         return status, body
 
     def ocr_job(self, job_id: str) -> tuple[int, dict]:
+        if self._no_ocr:
+            return 404, error_body("This OCR job is unknown, already fetched, or expired.")
         return self._ocr_jobs.fetch(job_id)
 
 
@@ -309,7 +316,7 @@ def make_handler_class(
             if url.path == "/scanners":
                 self._send_json(200, {"scanners": backend.scanners()})
                 return
-            if path == "/ocr/<job>":
+            if url.path.startswith("/ocr/"):
                 status, response = backend.ocr_job(job_id)
                 self._send_json(status, response)
                 return

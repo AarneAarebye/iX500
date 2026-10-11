@@ -77,13 +77,20 @@ class ScanixMenuBarApp(rumps.App):
         # non-numeric SCANIX500_BRIDGE_PORT (ValueError) must never take
         # the whole menu bar app down with it, since a launchd-launched
         # process has nowhere useful for an uncaught traceback to go.
+        # The OCR queue is optional: if its folder can't be made, the bridge
+        # still scans and simply doesn't offer background OCR.
         try:
-            # Started now (not lazily) so unfinished OCR jobs resume after a restart.
             self._ocr_jobs = OcrJobQueue(default_ocr_jobs_path())
-            self._ocr_jobs.start()
-            backend = RealBackend(lambda: self.bridge_destination, self, ocr_jobs=self._ocr_jobs)
+        except OSError as e:
+            self._ocr_jobs = None
+            rumps.notification(title="Background OCR unavailable", subtitle="", message=str(e))
+        try:
+            backend = RealBackend(lambda: self.bridge_destination, self,
+                                  ocr_jobs=self._ocr_jobs if self._ocr_jobs is not None else False)
             self._bridge_server = start_bridge_server(lambda: self.bridge_destination, self, self.pairing,
                                                       backend=backend)
+            if self._ocr_jobs is not None:
+                self._ocr_jobs.start()  # now, so unfinished jobs resume after a restart
         except (OSError, ValueError) as e:
             self._bridge_server = None
             rumps.notification(title="Scan bridge unavailable", subtitle="", message=str(e))

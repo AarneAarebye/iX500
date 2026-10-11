@@ -641,3 +641,14 @@ def test_ocr_routes(ocr_server):
     assert _request(base, "GET", "/ocr")[0] == 404
     assert _request(base, "GET", "/ocr/" + "x" * 30)[0] == 404
     assert _request(base, "GET", "/ocr/..%2F..%2Fetc")[0] == 404
+
+
+def test_backend_without_ocr_does_not_offer_it(tmp_path):
+    from scanix500.menubar.bridge import RealBackend
+    backend = RealBackend(lambda: str(tmp_path), FakeScanTrigger(), ocr_jobs=False)
+    assert "ocr" not in backend.scanners()[0]
+    with pytest.raises(Exception) as info:
+        from scanix500.menubar.protocol_v2 import validate
+        validate({"scanner": "sane:ix500", "ocr": True}, backend.scanners())
+    assert info.value.status == 422
+    assert backend.ocr_job("x" * 30)[0] == 404

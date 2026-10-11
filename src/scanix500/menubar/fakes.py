@@ -224,4 +224,3 @@ class FakePairing:
     def is_valid(self, token: str | None) -> bool:
         with self._lock:
             return bool(token) and token in self._tokens
-
