@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import sys
@@ -9,6 +10,9 @@ from pathlib import Path
 from scanix500.menubar.profiles import Profile
 
 _KNOWN_MESSAGES = {"No pages scanned.", "All pages were blank; no PDF written."}
+_SANE_DEBUG_LINE = re.compile(r"\[\d{2}:\d{2}:\d{2}\.\d+\] \[")
+# cli.py's lines for a batch that stopped early but kept its earlier pages.
+_STOPPED_PREFIXES = ("Multi-feed detected", "Scanner stopped at sheet")
 
 
 @dataclass
@@ -33,11 +37,14 @@ def parse_scan_output(returncode: int, stdout: str, stderr: str) -> ScanResult:
             message = "Scan complete"
         return ScanResult(ok=True, partial=False, message=message, output_paths=output_paths)
 
-    stderr_lines = [line for line in stderr.splitlines() if line]
-    multi_feed = any("Multi-feed detected" in line for line in stderr_lines)
+    # SANE's own debug output (e.g. its network backend probing another
+    # scanner: "[13:19:42.848668] [bjnp] add_scanner: …") lands on the same
+    # stderr and must never become the message a person sees.
+    stderr_lines = [line for line in stderr.splitlines() if line and not _SANE_DEBUG_LINE.match(line)]
+    stop_lines = [line for line in stderr_lines if line.startswith(_STOPPED_PREFIXES)]
 
-    if multi_feed:
-        stderr_message = stderr_lines[0] if stderr_lines else "Multi-feed detected"
+    if stop_lines:
+        stderr_message = stop_lines[0]
         if output_paths:
             message = f"{stderr_message} — partial scan saved to {output_paths[0]}"
         elif message_line:

@@ -182,3 +182,13 @@ def test_cli_snaps_each_side_to_a_standard_size(tmp_path):
     ):
         main([str(tmp_path), "--simplex", "--skip-ocr", "--skip-blank-filter"])
     assert snap.call_count == 1
+
+
+def test_main_reports_why_the_scanner_stopped(tmp_path, capsys):
+    pages = [PagePair(_content_image(), _content_image())]
+    err = MultiFeedError(1, pages, reason="Error during device I/O")
+    with patch("scanix500.cli.PySaneDevice"), patch("scanix500.cli.capture_pages", side_effect=err), patch(
+        "scanix500.cli.build_pdf"
+    ):
+        assert main([str(tmp_path), "--skip-ocr"]) == 1
+    assert "Scanner stopped at sheet 2 (Error during device I/O)" in capsys.readouterr().err

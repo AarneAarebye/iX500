@@ -42,11 +42,20 @@ def main(argv: list[str] | None = None) -> int:
         print("No pages scanned.")
         return 0
     except MultiFeedError as e:
-        print(
-            f"Multi-feed detected at sheet {e.sheet_index}; "
-            f"processing {len(e.pages_captured)} pages captured before the jam.",
-            file=sys.stderr,
-        )
+        if e.reason:
+            # A failed read: the driver's own words say what happened.
+            # sheet_index counts the sheets finished before it.
+            print(
+                f"Scanner stopped at sheet {e.sheet_index + 1} ({e.reason}); "
+                f"processing {len(e.pages_captured)} pages captured before it.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"Multi-feed detected at sheet {e.sheet_index}; "
+                f"processing {len(e.pages_captured)} pages captured before the jam.",
+                file=sys.stderr,
+            )
         # Intentional fall-through (not an early return): the pages captured
         # before the jam must still be filtered, built and routed by the shared
         # code below. Only the exit code differs from the success path.

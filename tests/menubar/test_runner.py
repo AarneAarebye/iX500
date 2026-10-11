@@ -186,3 +186,25 @@ def test_build_argv_adds_only_non_default_settings():
     argv = _build_argv(Profile(name="p", destination="/d", duplex=False, color_mode="bw",
                                resolution=600, keep_blank_pages=True))
     assert argv[1:] == ["/d", "--simplex", "--mode", "bw", "--resolution", "600", "--keep-blank-pages"]
+
+
+SANE_NOISE = "[13:19:42.848668] [bjnp] add_scanner: Scanner MF650C Series is not supported, model is unknown! Please report upstream\n"
+
+
+def test_sane_debug_lines_never_become_the_message():
+    result = parse_scan_output(1, "", SANE_NOISE + "Scanner setup failed: The scanner refused a setting: x\n")
+    assert result.message == "Scanner setup failed: The scanner refused a setting: x"
+
+
+def test_multi_feed_message_skips_sane_noise():
+    result = parse_scan_output(1, "/tmp/scan.pdf\n", SANE_NOISE + "Multi-feed detected at sheet 2; processing 2 pages captured before the jam.\n")
+    assert result.partial and result.message.startswith("Multi-feed detected at sheet 2")
+
+
+def test_a_scanner_stop_with_pages_is_partial_and_keeps_the_reason():
+    result = parse_scan_output(
+        1, "/tmp/scan.pdf\n",
+        SANE_NOISE + "Scanner stopped at sheet 3 (Error during device I/O); processing 4 pages captured before it.\n",
+    )
+    assert result.partial and not result.ok
+    assert result.message.startswith("Scanner stopped at sheet 3 (Error during device I/O)")

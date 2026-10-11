@@ -124,3 +124,10 @@ def test_capture_pages_simplex_jam_keeps_earlier_sheets():
     with pytest.raises(MultiFeedError) as info:
         capture_pages(device, duplex=False)
     assert len(info.value.pages_captured) == 1
+
+
+def test_a_failed_read_keeps_the_driver_reason():
+    device = FakeSaneDevice(frames=[_img("a"), _img("b"), _img("c"), _img("d")], fail_at_frame=3)
+    with pytest.raises(MultiFeedError) as info:
+        capture_pages(device)
+    assert info.value.reason == "simulated read-time hardware fault"

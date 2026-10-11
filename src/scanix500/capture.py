@@ -37,6 +37,10 @@ def find_fujitsu_device(devices: list[tuple]) -> str | None:
     return None
 
 
+def _reason(e: Exception) -> str:
+    return str(e) or type(e).__name__
+
+
 def capture_pages(device: SaneDevice, *, duplex: bool = True) -> list[PagePair]:
     device.start()
     pages: list[PagePair] = []
@@ -46,13 +50,13 @@ def capture_pages(device: SaneDevice, *, duplex: bool = True) -> list[PagePair]:
             front = device.read_frame()
         except StopIteration:
             break
-        except Exception:
+        except Exception as e:
             # A read failed abnormally mid-batch (e.g. a real jam or a
             # double-feed that aborts the read itself rather than merely
             # setting a flag afterward — confirmed possible on real hardware:
             # the fujitsu backend can return SANE_STATUS_JAMMED from a read).
             # Never let this crash out uncaught and lose partial work.
-            raise MultiFeedError(sheet_index, pages)
+            raise MultiFeedError(sheet_index, pages, reason=_reason(e))
         back = None
         if duplex:
             try:
@@ -62,8 +66,8 @@ def capture_pages(device: SaneDevice, *, duplex: bool = True) -> list[PagePair]:
                 # never did, so the pair can't be completed. Treat it as
                 # end-of-batch and keep every complete pair captured so far.
                 break
-            except Exception:
-                raise MultiFeedError(sheet_index, pages)
+            except Exception as e:
+                raise MultiFeedError(sheet_index, pages, reason=_reason(e))
         sheet_index += 1
         pages.append(PagePair(front, back))
         if device.multi_feed_detected():
