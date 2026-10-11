@@ -39,7 +39,7 @@ for the implementation plan.
 
 ## Status
 
-**All four phases are complete.**
+**All four phases are complete, and protocol version 2 (0.4.0) is built but not yet checked on the real scanner.**
 
 - **Phase 1 — CLI pipeline.** The `scanix500` command-line tool: ADF duplex capture,
   blank-page detection, splitting on separator sheets, PDF assembly, and OCR.
@@ -49,7 +49,10 @@ for the implementation plan.
   starts a scan using the "Hardware Button" profile.
 - **Phase 4 — HTTP bridge.** A localhost-only HTTP endpoint built into the menu bar
   app so an external caller (Dossiary) can trigger a parameterized scan and receive
-  the scanned file(s) directly — see "Phase 4: HTTP bridge" below.
+  the scanned file(s) directly — see "Phase 4: HTTP bridge" below. Version 0.4.0
+  adds protocol version 2 (`GET /scanners`, JSON `POST /scan`), described in
+  "Protocol version 2 (0.4.0)" below; `GET /health`, `POST /pair` and the
+  query-string `POST /scan` described in this section are version 1, still served.
 
 Automated tests cover all pure logic. Manual hardware and UI tests are documented in the
 checklists below and must be run against the physical iX500 — hardware and GUI behavior
@@ -441,7 +444,31 @@ No install step beyond what Phase 2 already needs — the bridge is built
 into the menu bar app (`scanix500-menubar`) and requires no extra
 dependency (`http.server` is part of the Python standard library).
 
-### Use
+### Protocol version 2 (0.4.0)
+
+Dossiary 1.44 and later show the iX500 in their scan dialog and let you pick
+one or both sides, color / gray / black & white, 300 or 600 dpi, and
+"split on blank pages" / "skip blank pages". The dialog talks to the bridge
+with protocol version 2 (`GET /scanners`, then `POST /scan` with a JSON body
+and no query string); the contract is dossiary-scan-helper's `PROTOCOL.md`.
+
+- OCR still runs on every scan (`deu+eng`).
+- Older Dossiary releases keep working: a `POST /scan` with a query string is
+  still a version 1 request, answered as before.
+- The iX500 is always listed in `/scanners`; the bridge doesn't probe the
+  scanner for that. With it unplugged, a scan answers `503`.
+- Black & white is scanned as gray and then thresholded to 1-bit (at 160,
+  still to be confirmed on the real scanner).
+- Version 2 error bodies carry the message under both `message` and `error`,
+  so Dossiary 1.43 shows them too.
+- `scripts/run-conformance.sh [path to dossiary-scan-helper]` runs that
+  repo's conformance suite against `scanix500-bridge --fake-scanners` (seven
+  fake scanners, pairing code `000000`, testing only; 43 tests pass).
+- Not yet verified on hardware: the feeder source name, the black & white
+  threshold, blank-page detection on gray / black & white, and OCR on those
+  PDFs.
+
+### Use (version 1)
 
 With the menu bar app running, `POST /scan?skip_blank_filter=<true|false>&skip_ocr=<true|false>&split_on_blank=<true|false>`
 to `http://127.0.0.1:8765` triggers a scan using exactly those settings —

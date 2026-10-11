@@ -14,6 +14,7 @@ hardware fault). Full context lives in:
 - `docs/superpowers/specs/2026-09-13-scanix500-menubar-design.md` + `docs/superpowers/plans/2026-09-13-scanix500-menubar-app.md` — Phase 2 (`scanix500-menubar`)
 - `docs/superpowers/specs/2026-09-13-scanix500-button-trigger-design.md` + `docs/superpowers/plans/2026-09-13-scanix500-button-trigger.md` — Phase 3 (physical Scan-button trigger)
 - `docs/superpowers/plans/2026-09-14-scanix500-http-bridge.md` (Phase 4's original plan), plus its later amendments `docs/superpowers/plans/2026-09-16-scan-bridge-auto-connect.md` and `docs/superpowers/plans/2026-09-16-scan-bridge-parameterized-scan.md` — the HTTP bridge; each amendment's own design spec lives in the sibling Dossiary repo (see "Project phasing" below)
+- `docs/superpowers/plans/2026-10-11-scanix500-protocol-v2.md` — protocol version 2 (0.4.0): `GET /scanners`, JSON `POST /scan`, scan settings; contract is dossiary-scan-helper's `PROTOCOL.md`
 - `docs/superpowers/specs/2026-09-14-scanix500-profile-form-design.md` + `docs/superpowers/plans/2026-09-14-scanix500-profile-form.md` — the Add/Edit Profile settings window
 
 Read the spec before making architectural changes; read the plan before
@@ -107,6 +108,28 @@ TDD steps.
 - **`start-menubar.sh` / `stop-menubar.sh`** start or stop the menu bar
   app. Stop unloads the LaunchAgent instead of killing the process, since
   its `KeepAlive` would restart a killed app.
+- **Protocol version 2 (0.4.0)** (`menubar/protocol_v2.py`, `bridge.py`,
+  `bw.py`, `fakes.py`, `bridge_main.py`). `protocol_v2.py` is pure: the
+  iX500's one fixed `/scanners` entry (`sane:ix500`, feeder, duplex, color/
+  gray/bw, 300/600 dpi, splitOnBlank/skipBlankPages), request validation, and
+  the mapping of a scan result to a response. **The iX500 is always listed
+  and never probed**: opening SANE from the HTTP thread would fight a scan or
+  the Scan button, so an unplugged scanner shows up only as a `503` on
+  `POST /scan`. Error bodies carry the message under both `message` and
+  `error` (Dossiary 1.43 reads `error`). `bridge.py`'s check order: Origin 403
+  -> OPTIONS 204 -> unknown path 404 / wrong method 405 with `Allow` ->
+  `/scanners` and `/scan` without a valid token 401 -> endpoint checks. **A
+  version 1 request is recognised by a query string on `POST /scan`** and goes
+  through the old `route_scan_request` unchanged (`{"error"}` bodies);
+  `start_bridge_server(..., trigger=None)` disables version 1. OCR stays on.
+  **Black & white is scanned as SANE `Gray` and thresholded to 1-bit (160)
+  after trimming and the blank check** (`bw.py`), since both need gray levels;
+  the threshold and SANE source/mode names are unverified on hardware.
+  `keep_blank_pages` serves split-only (split on blank pages without skipping
+  them). `fakes.py` (`FakeBackend`, `FakePairing`: seven scanners, code
+  `000000`) and `bridge_main.py` (`scanix500-bridge --fake-scanners`) exist
+  only so `scripts/run-conformance.sh` can run dossiary-scan-helper's
+  conformance suite (43 tests) against the bridge.
 
 ## Project phasing
 
