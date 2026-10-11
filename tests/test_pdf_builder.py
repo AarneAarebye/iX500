@@ -114,3 +114,16 @@ def test_bw_and_gray_pages_are_not_converted_to_color(tmp_path):
         for name in xobjects:
             spaces.append(xobjects[name].get_object()["/ColorSpace"])
     assert "/DeviceRGB" not in spaces
+
+
+def test_build_pdf_ocr_straightens_slight_tilts(tmp_path):
+    # The driver's swdeskew is off (it rotated a straight sheet by 20°);
+    # ocrmypdf --deskew straightens only slight tilts and leaves large ones.
+    def fake_run(cmd, check, capture_output):
+        Path(cmd[-1]).write_bytes(Path(cmd[-2]).read_bytes())
+        return None
+
+    with patch("scanix500.pdf_builder.subprocess.run", side_effect=fake_run) as mock_run:
+        build_pdf([_content_image()], tmp_path / "out.pdf", ocr=True)
+
+    assert "--deskew" in mock_run.call_args.args[0]

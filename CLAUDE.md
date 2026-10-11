@@ -97,7 +97,7 @@ TDD steps.
 - **Pages come out at their paper's size (0.3.0)** -- the scan area stays
   A4, and three steps shrink it to the sheet: `PySaneDevice` turns on the
   driver's `ald` (the scanner's sensor ends the page at the paper's end)
-  and `swdeskew`/`swcrop`, and `cli.py` then runs `trim.py`'s
+  and `swcrop` (and, until 0.4.0, `swdeskew` -- see below), and `cli.py` then runs `trim.py`'s
   `trim_background()` on every page before the blank filter. The trim is
   needed because `swcrop` can't find a narrow sheet's side edges: the ADF
   background is as light as white paper. It's told apart by texture
@@ -124,7 +124,16 @@ TDD steps.
   `start_bridge_server(..., trigger=None)` disables version 1. OCR stays on.
   **Black & white is scanned as SANE `Gray` and thresholded to 1-bit (160)
   after trimming and the blank check** (`bw.py`), since both need gray levels;
-  the threshold and SANE source/mode names are unverified on hardware.
+  checked on the real iX500 (2026-10-11): "ADF Front" for one side, Gray,
+  the 160 threshold at 600 dpi, blank detection on gray, OCR on 1-bit PDFs.
+  **The driver's `swdeskew` is off since 0.4.0**: on a straight-fed, once-folded
+  sheet it rotated the page by about 20 degrees (corners filled with one flat
+  gray, 214); with it off the same sheet came out straight and still cropped.
+  ocrmypdf's `--deskew` (`pdf_builder.py`) straightens slight tilts instead --
+  3 degrees came out straight, 20 degrees was left alone. **`trim.py` never
+  leaves less than 30 mm of a page** (`_MIN_PAPER_MM`): a blank side reads as
+  even almost everywhere and was once trimmed to 5 pixels, which then no
+  longer looked blank and ended up in the PDF.
   `keep_blank_pages` serves split-only (split on blank pages without skipping
   them). `fakes.py` (`FakeBackend`, `FakePairing`: seven scanners, code
   `000000`) and `bridge_main.py` (`scanix500-bridge --fake-scanners`) exist

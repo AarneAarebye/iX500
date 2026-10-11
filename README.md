@@ -131,6 +131,9 @@ Run these by hand against the real iX500 after any change to `capture.py` or
       `page_height=297` (mm) — confirmed setting `page_width`/`page_height`
       auto-syncs the scan area (`br_x`/`br_y`) on real hardware, and a real
       scan produced a PDF page at exactly 210.0x297.0mm.
+- [x] **Changed in 0.4.0:** `swdeskew` is off again -- it rotated a
+      straight-fed, once-folded sheet by about 20°; ocrmypdf `--deskew`
+      straightens slight tilts instead. `swcrop` and `ald` stay on.
 - [x] **Added 2026-10-09, hardware-verified:** the driver's software deskew and crop
       (`swdeskew`, `swcrop`) and automatic length detection (`ald`) are
       on, so each page comes out straightened at its paper's own size (an
@@ -459,16 +462,18 @@ and no query string); the contract is dossiary-scan-helper's `PROTOCOL.md`.
   scanner for that. With it unplugged, a scan answers `503`.
 - Version 2 file entries are `{name, pages, data}` (see dossiary-scan-helper's
   `PROTOCOL.md`), unlike version 1's `{filename, content_base64}`.
-- Black & white is scanned as gray and then thresholded to 1-bit (at 160,
-  still to be confirmed on the real scanner).
+- Black & white is scanned as gray and then thresholded to 1-bit (at 160).
+- Checked on the real iX500: one side, gray, black & white at 600 dpi
+  (crisp, margins complete, light print readable), skip blank pages on gray
+  scans, OCR on black & white PDFs.
 - Version 2 error bodies carry the message under both `message` and `error`,
   so Dossiary 1.43 shows them too.
 - `scripts/run-conformance.sh [path to dossiary-scan-helper]` runs that
   repo's conformance suite against `scanix500-bridge --fake-scanners` (seven
   fake scanners, pairing code `000000`, testing only; 43 tests pass).
-- Not yet verified on hardware: the feeder source name, the black & white
-  threshold, blank-page detection on gray / black & white, and OCR on those
-  PDFs.
+- Pages are no longer straightened by the scanner driver (`swdeskew`): it
+  rotated a straight-fed, folded sheet by about 20°. ocrmypdf's `--deskew`
+  straightens slight tilts while adding the text layer instead.
 
 ### Use (version 1)
 

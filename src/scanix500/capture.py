@@ -142,13 +142,17 @@ class PySaneDevice:
         #   Needed because swcrop alone can't find a bottom edge: the ADF
         #   background is as light as white paper (measured 236 vs 224 on a
         #   real A5 scan), so swcrop left the A4 length in place.
-        # - swdeskew/swcrop: straighten each side, then trim it to the
-        #   paper's edges in software.
+        # - swcrop: trim each side to the paper's edges in software.
+        # - swdeskew stays off: on a real, straight-fed sheet (folded once,
+        #   2026-10-11) it rotated the page by about 20 degrees, filling the
+        #   corners with flat gray; with it off the same sheet came out
+        #   straight and still cropped. pdf_builder's ocrmypdf --deskew
+        #   straightens slight tilts instead.
         # pdf_builder sizes each PDF page from the image and its DPI, so the
-        # cropped size carries through. All three are listed by
+        # cropped size carries through. All of these are listed by
         # `scanimage -A` for the iX500 (advanced, default off).
         self._dev.ald = True
-        self._dev.swdeskew = True
+        self._dev.swdeskew = False
         self._dev.swcrop = True
 
         # Double-feed detection is OFF by default on this hardware and must

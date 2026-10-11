@@ -37,7 +37,11 @@ def _ocr_single_page(input_path: Path) -> Path:
     output_path = input_path.with_suffix(".ocr.pdf")
     try:
         subprocess.run(
-            ["ocrmypdf", "-l", OCR_LANGUAGE, str(input_path), str(output_path)],
+            # --deskew straightens slight tilts while adding the text layer.
+            # It replaces the driver's swdeskew (see capture.py), and leaves a
+            # large tilt alone instead of guessing: checked on a real scan,
+            # 3 degrees came out straight, 20 degrees unchanged.
+            ["ocrmypdf", "-l", OCR_LANGUAGE, "--deskew", str(input_path), str(output_path)],
             check=True,
             capture_output=True,
         )
