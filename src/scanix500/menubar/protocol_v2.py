@@ -141,6 +141,12 @@ def response_from_result(result: ScanResult) -> tuple[int, dict]:
         return 500, error_body("The scan finished, but its PDF couldn't be read.")
     if result.partial and files:
         return 200, {"ok": False, "partial": True, "message": _first_part(result.message), "files": files}
+    prefix = "Scanner not found: "
     if result.message.startswith("Scanner not found"):
-        return 503, error_body(NOT_CONNECTED_MESSAGE)
+        if "No iX500 found" in result.message:
+            return 503, error_body(NOT_CONNECTED_MESSAGE)
+        detail = _first_part(result.message[len(prefix):] if result.message.startswith(prefix) else result.message)
+        return 503, error_body(f"The ScanSnap iX500 can't be used right now: {detail}")
+    if result.message.startswith("Scanner setup failed"):
+        return 500, error_body(_first_part(result.message))
     return 500, error_body(_first_part(result.message) or "The scan failed.")

@@ -102,6 +102,10 @@ def test_partial_response_keeps_pages_and_drops_the_path(tmp_path):
     (ScanResult(True, False, "No pages scanned.", []), 500, EMPTY_FEEDER_MESSAGE),
     (ScanResult(True, False, "All pages were blank; no PDF written.", []), 500, ALL_BLANK_MESSAGE),
     (ScanResult(False, False, "Scanner not found: No iX500 found via SANE fujitsu backend", []), 503, NOT_CONNECTED_MESSAGE),
+    (ScanResult(False, False, "Scanner not found: Failed to open SANE device: Device busy", []), 503,
+     "The ScanSnap iX500 can't be used right now: Failed to open SANE device: Device busy"),
+    (ScanResult(False, False, "Scanner setup failed: The scanner refused a setting: bad", []), 500,
+     "Scanner setup failed: The scanner refused a setting: bad"),
     (ScanResult(False, False, "Failed to write output to /x: denied", []), 500, "Failed to write output to /x: denied"),
 ])
 def test_failures(result, status, message):

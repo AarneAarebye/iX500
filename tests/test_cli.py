@@ -128,3 +128,46 @@ def test_cli_keep_blank_pages_reaches_the_filter(tmp_path):
     ), patch("scanix500.cli.filter_pages", return_value=[[pages[0].front]]) as filt, patch("scanix500.cli.build_pdf"):
         main([str(tmp_path), "--split-on-blank", "--keep-blank-pages", "--skip-ocr"])
     assert filt.call_args.kwargs == {"split_on_blank": True, "drop_blank_pages": False}
+
+
+def test_main_setup_error_prints_one_line(tmp_path, capsys):
+    from scanix500.errors import ScannerSetupError
+
+    with patch("scanix500.cli.PySaneDevice", side_effect=ScannerSetupError("The scanner refused a setting: x")):
+        assert main([str(tmp_path)]) == 1
+    err = capsys.readouterr().err
+    assert err.strip() == "Scanner setup failed: The scanner refused a setting: x"
+
+
+def test_main_unexpected_error_has_no_traceback(tmp_path, capsys):
+    with patch("scanix500.cli.PySaneDevice"), patch(
+        "scanix500.cli.capture_pages", side_effect=RuntimeError("boom")
+    ):
+        assert main([str(tmp_path)]) == 1
+    err = capsys.readouterr().err
+    assert "Traceback" not in err and "boom" in err
+
+
+def test_pysane_device_wraps_setting_errors():
+    import sys
+    import types
+
+    import pytest
+
+    from scanix500.capture import PySaneDevice
+    from scanix500.errors import ScannerSetupError
+
+    class Dev:
+        def __setattr__(self, k, v):
+            raise ValueError("Invalid argument")
+
+    fake = types.SimpleNamespace(
+        init=lambda: None,
+        get_devices=lambda: [("fujitsu:ScanSnap iX500:1", "FUJITSU", "ScanSnap iX500", "scanner")],
+        open=lambda name: Dev(),
+    )
+    with patch.dict(sys.modules, {"sane": fake}), patch(
+        "scanix500.capture.find_fujitsu_device", return_value="x"
+    ):
+        with pytest.raises(ScannerSetupError, match="refused a setting"):
+            PySaneDevice()

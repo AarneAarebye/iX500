@@ -3,7 +3,7 @@ from typing import Protocol
 
 from PIL import Image
 
-from scanix500.errors import MultiFeedError, NoPagesScannedError, ScannerNotFoundError
+from scanix500.errors import MultiFeedError, NoPagesScannedError, ScannerNotFoundError, ScannerSetupError
 
 
 @dataclass
@@ -115,6 +115,14 @@ class PySaneDevice:
         except Exception as e:
             raise ScannerNotFoundError(f"Failed to open SANE device: {e}") from e
 
+        try:
+            self._apply_settings(duplex, color_mode, resolution)
+        except Exception as e:
+            raise ScannerSetupError(f"The scanner refused a setting: {e}") from e
+
+        self._frames = None
+
+    def _apply_settings(self, duplex: bool, color_mode: str, resolution: int) -> None:
         self._dev.source = "ADF Duplex" if duplex else "ADF Front"
         self._dev.resolution = resolution
         # The backend's own default is "Lineart" (pure 1-bit black & white,
@@ -155,8 +163,6 @@ class PySaneDevice:
         self._dev.df_action = "Stop"
         self._dev.df_thickness = True
         self._dev.df_skew = True
-
-        self._frames = None
 
     def start(self) -> None:
         # multi_scan() calls sane_start() per frame internally and raises

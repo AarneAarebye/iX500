@@ -2,6 +2,10 @@ class ScannerNotFoundError(Exception):
     """Raised when the SANE fujitsu backend can't find the iX500."""
 
 
+class ScannerSetupError(Exception):
+    """Raised when SANE refuses a scan setting (source, resolution, mode...)."""
+
+
 class NoPagesScannedError(Exception):
     """Raised when the ADF was empty and no pages were captured."""
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 from PIL import Image
 
 # Paper scans at about 225-245, printed text far below 128; 160 keeps light
-# pencil and faint print readable. Checked by hand against real scans.
+# pencil and faint print readable. Chosen for typical paper and print; to be confirmed on hardware.
 BW_THRESHOLD = 160
 
 

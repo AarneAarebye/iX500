@@ -2,8 +2,10 @@
 # Runs dossiary-scan-helper's conformance suite against this bridge in fake
 # scanner mode. Usage: scripts/run-conformance.sh [path to dossiary-scan-helper]
 set -euo pipefail
-cd "$(dirname "$0")/.."
-SUITE_REPO="${1:-../Paperless/dossiary-scan-helper}"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SUITE_REPO="${1:-$REPO_ROOT/../Paperless/dossiary-scan-helper}"
+SUITE_REPO="$(cd "$SUITE_REPO" 2>/dev/null && pwd)" || { echo "Conformance suite repo not found: ${1:-$REPO_ROOT/../Paperless/dossiary-scan-helper}"; exit 1; }
+cd "$REPO_ROOT"
 PORT="${PORT:-8798}"
 [ -d "$SUITE_REPO/conformance" ] || { echo "No conformance suite in $SUITE_REPO"; exit 1; }
 .venv/bin/scanix500-bridge --fake-scanners --port "$PORT" > /tmp/scanix500-conformance.log 2>&1 &

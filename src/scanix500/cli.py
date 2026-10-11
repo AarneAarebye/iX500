@@ -5,7 +5,7 @@ from pathlib import Path
 from scanix500.bw import to_black_and_white
 from scanix500.blank_filter import filter_pages
 from scanix500.capture import PagePair, PySaneDevice, capture_pages
-from scanix500.errors import MultiFeedError, NoPagesScannedError, ScannerNotFoundError
+from scanix500.errors import MultiFeedError, NoPagesScannedError, ScannerNotFoundError, ScannerSetupError
 from scanix500.pdf_builder import build_pdf
 from scanix500.router import compute_output_paths
 from scanix500.trim import trim_background
@@ -21,7 +21,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--mode", choices=("color", "gray", "bw"), default="color")
     parser.add_argument("--resolution", type=int, default=300)
     parser.add_argument("--keep-blank-pages", action="store_true",
-                        help="with --split-on-blank: keep blank pages, drop only blank separator sheets")
+                        help="keep blank pages (with --split-on-blank, a blank separator sheet is still dropped)")
     return parser.parse_args(argv)
 
 
@@ -33,6 +33,9 @@ def main(argv: list[str] | None = None) -> int:
         pages = capture_pages(device, duplex=not args.simplex)
     except ScannerNotFoundError as e:
         print(f"Scanner not found: {e}", file=sys.stderr)
+        return 1
+    except ScannerSetupError as e:
+        print(f"Scanner setup failed: {e}", file=sys.stderr)
         return 1
     except NoPagesScannedError:
         print("No pages scanned.")
@@ -48,6 +51,9 @@ def main(argv: list[str] | None = None) -> int:
         # code below. Only the exit code differs from the success path.
         pages = e.pages_captured
         exit_code = 1
+    except Exception as e:
+        print(f"Scan failed: {e}", file=sys.stderr)
+        return 1
     else:
         exit_code = 0
 
