@@ -19,14 +19,15 @@ def _status(body):
 def test_ix500_entry_is_exact():
     assert IX500 == {"id": "sane:ix500", "name": "ScanSnap iX500", "sources": ["feeder"], "duplex": True,
                      "colorModes": ["color", "gray", "bw"], "resolutions": [300, 600],
-                     "extras": ["splitOnBlank", "skipBlankPages"]}
+                     "extras": ["splitOnBlank", "skipBlankPages"],
+                     "ocr": {"languages": ["deu", "eng", "fra", "spa", "chi_sim", "chi_tra"]}}
 
 
 def test_defaults():
     scanner, settings = validate({"scanner": "sane:ix500"}, [IX500])
     assert scanner["id"] == "sane:ix500"
     assert settings == {"source": "feeder", "duplex": False, "colorMode": "color", "resolution": 300,
-                        "format": "pdf", "extras": {}}
+                        "format": "pdf", "extras": {}, "ocr": False, "ocrLanguages": []}
 
 
 @pytest.mark.parametrize("body, status", [
@@ -115,3 +116,28 @@ def test_failures(result, status, message):
 
 def test_error_body_has_both_keys():
     assert error_body("Nope.") == {"ok": False, "partial": False, "message": "Nope.", "error": "Nope."}
+
+
+@pytest.mark.parametrize("body, status", [
+    ({"scanner": "sane:ix500", "ocr": "yes"}, 400),
+    ({"scanner": "sane:ix500", "ocr": True, "ocrLanguages": "deu"}, 400),
+    ({"scanner": "sane:ix500", "ocr": True, "ocrLanguages": [1]}, 400),
+    ({"scanner": "sane:ix500", "ocr": "yes", "ocrLanguages": ["xyz"]}, 400),
+    ({"scanner": "sane:ix500", "ocr": True, "ocrLanguages": ["xyz"]}, 422),
+])
+def test_ocr_validation(body, status):
+    assert _status(body) == status
+
+
+def test_ocr_defaults_and_type_only_without_ocr():
+    _, s = validate({"scanner": "sane:ix500", "ocrLanguages": ["xyz"]}, [IX500])
+    assert (s["ocr"], s["ocrLanguages"]) == (False, ["xyz"])
+    _, s = validate({"scanner": "sane:ix500", "ocr": True, "ocrLanguages": ["fra", "fra", "eng"]}, [IX500])
+    assert (s["ocr"], s["ocrLanguages"]) == (True, ["fra", "eng"])
+
+
+def test_profile_skips_ocr_when_the_job_does_it():
+    settings = {"source": "feeder", "duplex": True, "colorMode": "gray", "resolution": 300,
+                "format": "pdf", "extras": {}, "ocr": True, "ocrLanguages": []}
+    assert profile_for(settings, "/d").skip_ocr is True
+    assert profile_for({**settings, "ocr": False}, "/d").skip_ocr is False

@@ -507,7 +507,7 @@ def test_health_is_version_2_and_keeps_the_service_name(v2_server):
     base, _ = v2_server
     status, body, headers = _request(base, "GET", "/health")
     assert status == 200
-    assert body == {"ok": True, "helper": "scanix500", "version": "0.4.0", "protocol": 2,
+    assert body == {"ok": True, "helper": "scanix500", "version": "0.5.0", "protocol": 2,
                     "paired": True, "service": "scanix500-bridge"}
     assert headers["Content-Type"].startswith("application/json")
 
@@ -588,3 +588,56 @@ def test_version_1_request_still_works(v2_server, tmp_path):
     base, trigger = v2_server
     status, body = _post(_scan_url(base))
     assert status == 200 and "output_paths" in body and trigger.called_with.name == "Dossiary Bridge Scan"
+
+
+@pytest.fixture
+def ocr_server(unused_tcp_port, tmp_path):
+    from pypdf import PdfWriter
+
+    from scanix500.menubar.bridge import RealBackend
+    from scanix500.menubar.ocr_jobs import OcrJobQueue
+    pdf = tmp_path / "scan_2026-10-11_120000.pdf"
+    w = PdfWriter()
+    w.add_blank_page(100, 100)
+    w.write(str(pdf))
+    trigger = FakeScanTrigger(result=ScanResult(ok=True, partial=False, message="x", output_paths=[str(pdf)]))
+
+    def fake_ocr(src, dst, languages):
+        Path(dst).write_bytes(Path(src).read_bytes() + b"%SEARCHABLE")
+
+    queue = OcrJobQueue(tmp_path / "jobs", ocr=fake_ocr)
+    backend = RealBackend(lambda: str(tmp_path), trigger, ocr_jobs=queue)
+    server = start_bridge_server(lambda: str(tmp_path), trigger, PAIRING, port=unused_tcp_port, backend=backend)
+    yield f"http://127.0.0.1:{unused_tcp_port}", trigger, queue, pdf
+    server.shutdown()
+    server.server_close()
+
+
+def test_ocr_scan_answers_with_jobs_and_skips_ocr(ocr_server):
+    base, trigger, queue, pdf = ocr_server
+    status, body, _ = _request(base, "POST", "/scan", {"scanner": "sane:ix500", "ocr": True, "ocrLanguages": ["fra"]})
+    assert status == 200 and trigger.called_with.skip_ocr is True
+    job = body["files"][0]["ocrJob"]
+    assert _request(base, "GET", f"/ocr/{job}")[0] == 202
+    queue.run_next()
+    status, body, _ = _request(base, "GET", f"/ocr/{job}")
+    assert status == 200 and len(body["files"]) == 1 and body["files"][0]["name"] == pdf.name
+    assert pdf.read_bytes().endswith(b"%SEARCHABLE")  # the safety-net copy was replaced
+    assert _request(base, "GET", f"/ocr/{job}")[0] == 404
+
+
+def test_scan_without_ocr_has_no_jobs(ocr_server):
+    base, trigger, _, _ = ocr_server
+    status, body, _ = _request(base, "POST", "/scan", {"scanner": "sane:ix500"})
+    assert status == 200 and "ocrJob" not in body["files"][0] and trigger.called_with.skip_ocr is False
+
+
+def test_ocr_routes(ocr_server):
+    base, *_ = ocr_server
+    assert _request(base, "GET", "/ocr/" + "x" * 30, token=None)[0] == 401
+    status, _, headers = _request(base, "POST", "/ocr/" + "x" * 30, body=b"{}", token=None)
+    assert status == 405 and headers["Allow"] == "GET, OPTIONS"
+    assert _request(base, "GET", "/ocr/")[0] == 404
+    assert _request(base, "GET", "/ocr")[0] == 404
+    assert _request(base, "GET", "/ocr/" + "x" * 30)[0] == 404
+    assert _request(base, "GET", "/ocr/..%2F..%2Fetc")[0] == 404

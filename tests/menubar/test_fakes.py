@@ -17,7 +17,7 @@ def _scan(scanner_id, **fields):
 
 
 def test_seven_fakes():
-    assert [s["id"] for s in FAKE_SCANNERS] == ["fake:flatbed", "fake:feeder", "fake:splitter", "fake:jam",
+    assert [s["id"] for s in FAKE_SCANNERS][:7] == ["fake:flatbed", "fake:feeder", "fake:splitter", "fake:jam",
                                                  "fake:slow", "fake:offline", "fake:empty"]
 
 
@@ -65,3 +65,13 @@ def test_fake_pairing():
     assert not pairing.is_valid("nope") and not pairing.is_valid(None)
     with pytest.raises(PairingError, match="Pair a browser"):
         pairing.pair("123456")
+
+
+def test_fake_ocr_scanner_and_job():
+    backend = FakeBackend()
+    assert [s["id"] for s in backend.scanners()][-1] == "fake:ocr"
+    scanner, settings = validate({"scanner": "fake:ocr", "ocr": True}, backend.scanners())
+    status, body = backend.scan(scanner, settings)
+    f = body["files"][0]
+    assert b"Flatbed page 1" not in base64.b64decode(f["data"])
+    assert backend.ocr_job(f["ocrJob"])[0] == 202

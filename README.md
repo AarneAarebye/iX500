@@ -51,7 +51,7 @@ for the implementation plan.
   app so an external caller (Dossiary) can trigger a parameterized scan and receive
   the scanned file(s) directly — see "Phase 4: HTTP bridge" below. Version 0.4.0
   adds protocol version 2 (`GET /scanners`, JSON `POST /scan`), described in
-  "Protocol version 2 (0.4.0)" below; `GET /health`, `POST /pair` and the
+  "Protocol version 2 (0.5.0)" below; `GET /health`, `POST /pair` and the
   query-string `POST /scan` described in this section are version 1, still served.
 
 Automated tests cover all pure logic. Manual hardware and UI tests are documented in the
@@ -450,7 +450,7 @@ No install step beyond what Phase 2 already needs — the bridge is built
 into the menu bar app (`scanix500-menubar`) and requires no extra
 dependency (`http.server` is part of the Python standard library).
 
-### Protocol version 2 (0.4.0)
+### Protocol version 2 (0.5.0)
 
 Dossiary 1.44 and later show the iX500 in their scan dialog and let you pick
 one or both sides, color / gray / black & white, 300 or 600 dpi, and
@@ -481,6 +481,18 @@ and no query string); the contract is dossiary-scan-helper's `PROTOCOL.md`.
   only the scanner's gray background (never white paper), and a page within
   5 mm of A4, A5 or A6 comes out at exactly that size. Straightening runs
   with OCR, so a scan with OCR off isn't straightened.
+
+**Background OCR (0.5.0).** A scan request with `"ocr": true` (and optional
+`"ocrLanguages"`, e.g. `["deu", "eng"]`; the iX500 offers deu, eng, fra, spa,
+chi_sim, chi_tra) runs with OCR off, so the answer comes sooner, and each
+returned file carries an `"ocrJob"` id. Dossiary then polls `GET /ocr/<job>`:
+`202` while queued or running, `200` with the searchable PDF once done (the
+job is deleted), `404` for an unknown, fetched or expired job, `500` if no
+searchable PDF could be made. Jobs run one at a time, live on disk under
+`~/Library/Application Support/scanix500/ocr-jobs/`, survive a restart and
+expire after 7 days. When a job finishes, the safety-net copy in the bridge
+folder is replaced by the searchable version. The Scan button and menu
+profiles still OCR before saving. `--fake` mode adds `fake:ocr`.
 
 ### Use (version 1)
 

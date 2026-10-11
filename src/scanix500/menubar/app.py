@@ -8,7 +8,8 @@ from pathlib import Path
 import rumps
 from PyObjCTools import AppHelper
 
-from scanix500.menubar.bridge import ScanBusyError, start_bridge_server
+from scanix500.menubar.bridge import RealBackend, ScanBusyError, start_bridge_server
+from scanix500.menubar.ocr_jobs import OcrJobQueue, default_ocr_jobs_path
 from scanix500.menubar.bridge_settings import (
     default_bridge_destination_path,
     load_bridge_destination,
@@ -77,7 +78,12 @@ class ScanixMenuBarApp(rumps.App):
         # the whole menu bar app down with it, since a launchd-launched
         # process has nowhere useful for an uncaught traceback to go.
         try:
-            self._bridge_server = start_bridge_server(lambda: self.bridge_destination, self, self.pairing)
+            # Started now (not lazily) so unfinished OCR jobs resume after a restart.
+            self._ocr_jobs = OcrJobQueue(default_ocr_jobs_path())
+            self._ocr_jobs.start()
+            backend = RealBackend(lambda: self.bridge_destination, self, ocr_jobs=self._ocr_jobs)
+            self._bridge_server = start_bridge_server(lambda: self.bridge_destination, self, self.pairing,
+                                                      backend=backend)
         except (OSError, ValueError) as e:
             self._bridge_server = None
             rumps.notification(title="Scan bridge unavailable", subtitle="", message=str(e))

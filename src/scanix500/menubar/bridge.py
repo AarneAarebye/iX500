@@ -12,6 +12,7 @@ from typing import Protocol
 from urllib.parse import parse_qs, urlsplit
 
 from scanix500 import __version__
+from scanix500.menubar.ocr_jobs import OcrJobQueue, default_ocr_jobs_path
 from scanix500.menubar.pairing import PairingError, PairingStore, bearer_token
 from scanix500.menubar.profiles import Profile
 from scanix500.menubar.protocol_v2 import IX500, ProtocolError, error_body, profile_for, response_from_result, validate
@@ -21,7 +22,8 @@ DEFAULT_PORT = 8765
 MAX_BODY_BYTES = 1_000_000
 JSON_TYPE = "application/json; charset=utf-8"
 # Each endpoint's one method (PROTOCOL.md "Endpoints and methods").
-ENDPOINTS = {"/health": "GET", "/scanners": "GET", "/scan": "POST", "/pair": "POST"}
+ENDPOINTS = {"/health": "GET", "/scanners": "GET", "/scan": "POST", "/pair": "POST",
+             "/ocr/<job>": "GET"}
 NOT_PAIRED_MESSAGE = (
     "This browser isn't paired with scanix500. Choose \u201cPair a Browser\u2026\u201d in the scanix500 menu "
     "and enter the code in Dossiary."
@@ -133,12 +135,26 @@ class V2Backend(Protocol):
 
     def scanners(self) -> list[dict]: ...
     def scan(self, scanner: dict, settings: dict) -> tuple[int, dict]: ...
+    def ocr_job(self, job_id: str) -> tuple[int, dict]: ...
 
 
 class RealBackend:
-    def __init__(self, get_destination: Callable[[], str], trigger: ScanTrigger):
+    def __init__(self, get_destination: Callable[[], str], trigger: ScanTrigger,
+                 ocr_jobs: OcrJobQueue | None = None):
         self._get_destination = get_destination
         self._trigger = trigger
+        self._queue = ocr_jobs
+        self._queue_lock = threading.Lock()
+
+    @property
+    def _ocr_jobs(self) -> OcrJobQueue:
+        # Created and started on first use when none was given, so nothing
+        # touches the real application-support folder until a job exists.
+        with self._queue_lock:
+            if self._queue is None:
+                self._queue = OcrJobQueue(default_ocr_jobs_path())
+                self._queue.start()
+            return self._queue
 
     def scanners(self) -> list[dict]:
         return [dict(IX500)]
@@ -146,7 +162,18 @@ class RealBackend:
     def scan(self, scanner: dict, settings: dict) -> tuple[int, dict]:
         # ScanBusyError propagates to the handler (409).
         result = self._trigger.trigger(profile_for(settings, self._get_destination()))
-        return response_from_result(result)
+        status, body = response_from_result(result)
+        if status == 200 and settings.get("ocr"):
+            by_name = {Path(p).name: p for p in result.output_paths}
+            for entry in body.get("files", []):
+                path = by_name.get(entry["name"])
+                if path:
+                    entry["ocrJob"] = self._ocr_jobs.submit(Path(path), entry["name"], entry["pages"],
+                                                            settings["ocrLanguages"], copy_to=path)
+        return status, body
+
+    def ocr_job(self, job_id: str) -> tuple[int, dict]:
+        return self._ocr_jobs.fetch(job_id)
 
 
 class _BodyError(ValueError):
@@ -255,7 +282,10 @@ def make_handler_class(
                 self._preflight()
                 return
             url = urlsplit(self.path)
-            method = ENDPOINTS.get(url.path)
+            path, job_id = url.path, ""
+            if path.startswith("/ocr/") and len(path) > len("/ocr/") and "/" not in path[len("/ocr/"):]:
+                job_id, path = path[len("/ocr/"):], "/ocr/<job>"
+            method = ENDPOINTS.get(path)
             if method is None:
                 self._error(404, "There's nothing at this address.")
                 return
@@ -278,6 +308,10 @@ def make_handler_class(
                 return
             if url.path == "/scanners":
                 self._send_json(200, {"scanners": backend.scanners()})
+                return
+            if path == "/ocr/<job>":
+                status, response = backend.ocr_job(job_id)
+                self._send_json(status, response)
                 return
             self._handle_v2_scan()
 

@@ -31,6 +31,7 @@ FAKE_SCANNERS = [
     _entry("fake:slow", "Fake Slow Scanner", ["flatbed"]),
     _entry("fake:offline", "Fake Offline Scanner", ["flatbed"]),
     _entry("fake:empty", "Fake Empty Feeder", ["feeder"]),
+    {**_entry("fake:ocr", "Fake OCR Scanner", ["flatbed"]), "ocr": {"languages": ["deu", "eng"]}},
 ]
 
 
@@ -133,9 +134,47 @@ def make_pdf(page_texts: list[str]) -> bytes:
     return bytes(out)
 
 
+class FakeOcrJobs:
+    """In-memory background OCR jobs: serial, each ready `delay` seconds after
+    the previous one, deleted on fetch, dropped after a week."""
+
+    def __init__(self, delay=2.0, clock=time.monotonic, retention=7 * 24 * 3600):
+        self._delay = delay
+        self._clock = clock
+        self._retention = retention
+        self._lock = threading.Lock()
+        self._jobs: dict[str, dict] = {}
+
+    def submit(self, pdf: bytes, name: str, pages: int) -> str:
+        with self._lock:
+            now = self._clock()
+            last = max((j["ready_at"] for j in self._jobs.values()), default=now)
+            job_id = secrets.token_urlsafe(24)
+            self._jobs[job_id] = {"ready_at": max(now, last) + self._delay, "created_at": now,
+                                  "name": name, "pages": pages, "pdf": pdf}
+            return job_id
+
+    def fetch(self, job_id: str) -> tuple[int, dict]:
+        with self._lock:
+            now = self._clock()
+            for jid in [j for j, job in self._jobs.items() if now - job["created_at"] > self._retention]:
+                del self._jobs[jid]
+            job = self._jobs.get(job_id)
+            if job is None:
+                return 404, {"ok": False, "partial": False,
+                             "message": "This OCR job is unknown, already fetched, or expired."}
+            if now >= job["ready_at"]:
+                del self._jobs[job_id]
+                return 200, {"ok": True, "files": [{"name": job["name"], "pages": job["pages"],
+                                                    "data": base64.b64encode(job["pdf"]).decode("ascii")}]}
+            ahead = sum(1 for j in self._jobs.values() if now < j["ready_at"] < job["ready_at"])
+            return 202, {"ok": True, "state": "running" if ahead == 0 else "queued", "position": ahead}
+
+
 class FakeBackend:
     def __init__(self):
         self._lock = threading.Lock()
+        self._ocr = FakeOcrJobs()
 
     def scanners(self) -> list[dict]:
         return [dict(s) for s in FAKE_SCANNERS]
@@ -153,9 +192,17 @@ class FakeBackend:
         files = []
         for i, pages in enumerate(documents, start=1):
             name = f"scan_{stamp}.pdf" if len(documents) == 1 else f"scan_{stamp}_{i}.pdf"
-            files.append({"name": name, "pages": len(pages),
-                          "data": base64.b64encode(make_pdf(pages)).decode("ascii")})
+            entry = {"name": name, "pages": len(pages)}
+            if settings.get("ocr"):
+                entry["data"] = base64.b64encode(make_pdf([""] * len(pages))).decode("ascii")
+                entry["ocrJob"] = self._ocr.submit(make_pdf(pages), name, len(pages))
+            else:
+                entry["data"] = base64.b64encode(make_pdf(pages)).decode("ascii")
+            files.append(entry)
         return 200, {"ok": not partial, "partial": partial, "message": message, "files": files}
+
+    def ocr_job(self, job_id: str) -> tuple[int, dict]:
+        return self._ocr.fetch(job_id)
 
 
 class FakePairing:
@@ -177,3 +224,4 @@ class FakePairing:
     def is_valid(self, token: str | None) -> bool:
         with self._lock:
             return bool(token) and token in self._tokens
+

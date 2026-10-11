@@ -22,6 +22,7 @@ IX500 = {
     "colorModes": ["color", "gray", "bw"],
     "resolutions": [300, 600],
     "extras": ["splitOnBlank", "skipBlankPages"],
+    "ocr": {"languages": ["deu", "eng", "fra", "spa", "chi_sim", "chi_tra"]},
 }
 
 EMPTY_FEEDER_MESSAGE = "No paper in the feeder."
@@ -66,6 +67,12 @@ def validate(body: object, scanners: list[dict]) -> tuple[dict, dict]:
     if not isinstance(extras, dict) or not all(isinstance(v, bool) for v in extras.values()):
         raise ProtocolError(400, "“extras” must map names to true or false.")
 
+    if "ocr" in body and not isinstance(body["ocr"], bool):
+        raise ProtocolError(400, "“ocr” must be true or false.")
+    languages = body.get("ocrLanguages", [])
+    if not isinstance(languages, list) or not all(isinstance(lang, str) for lang in languages):
+        raise ProtocolError(400, "“ocrLanguages” must be a list of language codes.")
+
     name = scanner["name"]
     source = body.get("source", scanner["sources"][0])
     if source not in scanner["sources"]:
@@ -86,8 +93,18 @@ def validate(body: object, scanners: list[dict]) -> tuple[dict, dict]:
         if on and extra not in scanner["extras"]:
             raise ProtocolError(422, f"{name} doesn't offer “{extra}”.")
 
+    ocr = body.get("ocr", False)
+    offered = (scanner.get("ocr") or {}).get("languages", [])
+    if ocr and not offered:
+        raise ProtocolError(422, f"{name} can't make a searchable PDF.")
+    if ocr:
+        for lang in languages:
+            if lang not in offered:
+                raise ProtocolError(422, f"{name} has no OCR language “{lang}”.")
+
     return scanner, {"source": source, "duplex": duplex, "colorMode": color_mode,
-                     "resolution": resolution, "format": fmt, "extras": dict(extras)}
+                     "resolution": resolution, "format": fmt, "extras": dict(extras),
+                     "ocr": ocr, "ocrLanguages": list(dict.fromkeys(languages))}
 
 
 def pages_message(count: int) -> str:
@@ -96,7 +113,7 @@ def pages_message(count: int) -> str:
 
 def profile_for(settings: dict, destination: str) -> Profile:
     """The one-off Profile a version 2 request runs. OCR stays on, as for
-    every scanix500 scan. No extras means no blank filtering at all."""
+    every scanix500 scan, unless a background job does it. No extras means no blank filtering at all."""
     extras = settings["extras"]
     split = extras.get("splitOnBlank", False)
     skip_blank = extras.get("skipBlankPages", False)
@@ -104,7 +121,7 @@ def profile_for(settings: dict, destination: str) -> Profile:
         name="Dossiary Bridge Scan",
         destination=destination,
         skip_blank_filter=not (split or skip_blank),
-        skip_ocr=False,
+        skip_ocr=bool(settings.get("ocr", False)),
         split_on_blank=split,
         duplex=settings["duplex"],
         color_mode=settings["colorMode"],

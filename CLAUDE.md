@@ -109,7 +109,7 @@ TDD steps.
 - **`start-menubar.sh` / `stop-menubar.sh`** start or stop the menu bar
   app. Stop unloads the LaunchAgent instead of killing the process, since
   its `KeepAlive` would restart a killed app.
-- **Protocol version 2 (0.4.0)** (`menubar/protocol_v2.py`, `bridge.py`,
+- **Protocol version 2 (0.5.0)** (`menubar/protocol_v2.py`, `bridge.py`,
   `bw.py`, `fakes.py`, `bridge_main.py`). `protocol_v2.py` is pure: the
   iX500's one fixed `/scanners` entry (`sane:ix500`, feeder, duplex, color/
   gray/bw, 300/600 dpi, splitOnBlank/skipBlankPages), request validation, and
@@ -122,7 +122,7 @@ TDD steps.
   `/scanners` and `/scan` without a valid token 401 -> endpoint checks. **A
   version 1 request is recognised by a query string on `POST /scan`** and goes
   through the old `route_scan_request` unchanged (`{"error"}` bodies);
-  `start_bridge_server(..., trigger=None)` disables version 1. OCR stays on.
+  `start_bridge_server(..., trigger=None)` disables version 1. OCR stays on for the Scan button and menu profiles. **Background OCR (0.5.0)**: `ocr: true` (with `ocrLanguages`, default `deu+eng`, order = priority) runs the scan with `skip_ocr` and gives every file an `ocrJob`; `GET /ocr/<job>` answers 202/200/404/500 (job ids must match `\A[A-Za-z0-9_-]{22,}\Z`). `OcrJobQueue` (`ocr_jobs.py`) keeps jobs on disk under `~/Library/Application Support/scanix500/ocr-jobs/`, runs one at a time, resumes after a restart, expires after 7 days, and replaces the bridge folder's safety-net copy with the searchable PDF. `RealBackend` without an `ocr_jobs` queue creates and starts one lazily on first use; the app starts one at launch. `fake:ocr` (with in-memory `FakeOcrJobs`, 2 s per job) serves the conformance suite.
   **Black & white is scanned as SANE `Gray` and thresholded to 1-bit (160)
   after trimming and the blank check** (`bw.py`), since both need gray levels;
   checked on the real iX500 (2026-10-11): "ADF Front" for one side, Gray,
