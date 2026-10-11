@@ -235,7 +235,7 @@ def test_bridge_server_round_trip_success(unused_tcp_port):
 def test_bridge_server_round_trip_missing_params_is_400(unused_tcp_port):
     server = start_bridge_server(lambda: "/tmp/scans", FakeScanTrigger(), PAIRING, port=unused_tcp_port)
     try:
-        status, body = _post(f"http://127.0.0.1:{unused_tcp_port}/scan")
+        status, body = _post(f"http://127.0.0.1:{unused_tcp_port}/scan?skip_ocr=true")
     finally:
         server.shutdown()
 
@@ -256,7 +256,7 @@ def test_bridge_server_round_trip_old_profile_path_is_404(unused_tcp_port):
         server.shutdown()
 
     assert status == 404
-    assert body == {"error": "not found"}
+    assert body["ok"] is False and body["message"]
 
 
 def test_bridge_server_round_trip_busy_is_409(unused_tcp_port):
@@ -376,7 +376,8 @@ def test_pairing_round_trip(tmp_path, unused_tcp_port):
         token = body["token"]
         # /health reports whether the sent token is paired.
         with urllib.request.urlopen(f"{base}/health") as resp:
-            assert json.loads(resp.read()) == {"service": "scanix500-bridge", "paired": False}
+            health = json.loads(resp.read())
+            assert health["service"] == "scanix500-bridge" and health["paired"] is False
         req = urllib.request.Request(f"{base}/health", headers={"Authorization": f"Bearer {token}"})
         with urllib.request.urlopen(req) as resp:
             assert json.loads(resp.read())["paired"] is True
@@ -420,12 +421,12 @@ def test_bridge_server_health_endpoint_returns_200(unused_tcp_port):
         server.shutdown()
 
     assert status == 200
-    assert body == {"service": "scanix500-bridge", "paired": False}
+    assert body["service"] == "scanix500-bridge" and body["paired"] is False and body["protocol"] == 2
     assert headers["Access-Control-Allow-Origin"] == "null"
     assert trigger.called_with is None
 
 
-def test_bridge_server_get_unknown_path_is_404(unused_tcp_port):
+def test_bridge_server_get_on_a_post_endpoint_is_405(unused_tcp_port):
     server = start_bridge_server(lambda: "/tmp/scans", FakeScanTrigger(), PAIRING, port=unused_tcp_port)
     try:
         req = urllib.request.Request(f"http://127.0.0.1:{unused_tcp_port}/scan", method="GET")
@@ -439,8 +440,8 @@ def test_bridge_server_get_unknown_path_is_404(unused_tcp_port):
     finally:
         server.shutdown()
 
-    assert status == 404
-    assert body == {"error": "not found"}
+    assert status == 405  # GET /scan: the endpoint exists but only answers POST
+    assert body["ok"] is False
 
 
 def test_bridge_server_options_preflight_advertises_get(unused_tcp_port):
@@ -474,5 +475,116 @@ def test_bridge_server_unhandled_method_still_has_cors_header(unused_tcp_port):
     finally:
         server.shutdown()
 
-    assert status == 501
+    assert status == 405  # the protocol answers a wrong method with 405, not stdlib's 501
     assert headers["Access-Control-Allow-Origin"] == "http://localhost:8833"
+
+
+def _request(base, method, path, body=None, token=TOKEN, headers=None):
+    all_headers = dict(headers or {})
+    if token:
+        all_headers["Authorization"] = f"Bearer {token}"
+    data = None if body is None else (body if isinstance(body, bytes) else json.dumps(body).encode())
+    req = urllib.request.Request(base + path, method=method, data=data, headers=all_headers)
+    try:
+        with urllib.request.urlopen(req) as resp:
+            raw = resp.read()
+            return resp.status, (json.loads(raw) if raw else None), dict(resp.headers)
+    except urllib.error.HTTPError as e:
+        raw = e.read()
+        return e.code, (json.loads(raw) if raw else None), dict(e.headers)
+
+
+@pytest.fixture
+def v2_server(unused_tcp_port, tmp_path):
+    trigger = FakeScanTrigger(result=ScanResult(ok=True, partial=False, message="No pages scanned.", output_paths=[]))
+    server = start_bridge_server(lambda: str(tmp_path), trigger, PAIRING, port=unused_tcp_port)
+    yield f"http://127.0.0.1:{unused_tcp_port}", trigger
+    server.shutdown()
+    server.server_close()
+
+
+def test_health_is_version_2_and_keeps_the_service_name(v2_server):
+    base, _ = v2_server
+    status, body, headers = _request(base, "GET", "/health")
+    assert status == 200
+    assert body == {"ok": True, "helper": "scanix500", "version": "0.4.0", "protocol": 2,
+                    "paired": True, "service": "scanix500-bridge"}
+    assert headers["Content-Type"].startswith("application/json")
+
+
+def test_scanners_lists_the_ix500(v2_server):
+    base, _ = v2_server
+    status, body, _ = _request(base, "GET", "/scanners")
+    assert status == 200 and [s["id"] for s in body["scanners"]] == ["sane:ix500"]
+
+
+def test_scanners_needs_a_token(v2_server):
+    base, _ = v2_server
+    status, body, _ = _request(base, "GET", "/scanners", token=None)
+    assert status == 401 and body["ok"] is False and body["message"]
+
+
+def test_v2_scan_runs_the_profile_from_the_settings(v2_server):
+    base, trigger = v2_server
+    status, body, _ = _request(base, "POST", "/scan", {"scanner": "sane:ix500", "duplex": True,
+                                                     "colorMode": "gray", "resolution": 600,
+                                                     "extras": {"splitOnBlank": True}})
+    assert (status, body["message"]) == (500, "No paper in the feeder.")
+    p = trigger.called_with
+    assert (p.duplex, p.color_mode, p.resolution, p.split_on_blank, p.keep_blank_pages, p.skip_ocr) == (
+        True, "gray", 600, True, True, False)
+
+
+def test_v2_scan_busy_is_409(unused_tcp_port):
+    server = start_bridge_server(lambda: "/tmp", FakeScanTrigger(raises=ScanBusyError()), PAIRING, port=unused_tcp_port)
+    try:
+        status, body, _ = _request(f"http://127.0.0.1:{unused_tcp_port}", "POST", "/scan", {"scanner": "sane:ix500"})
+        assert status == 409 and body["ok"] is False
+    finally:
+        server.shutdown(); server.server_close()
+
+
+@pytest.mark.parametrize("method, path, allow", [
+    ("GET", "/scan", "POST, OPTIONS"), ("POST", "/health", "GET, OPTIONS"),
+    ("PUT", "/pair", "POST, OPTIONS"), ("DELETE", "/scanners", "GET, OPTIONS"),
+])
+def test_wrong_method_is_405_with_allow(v2_server, method, path, allow):
+    base, _ = v2_server
+    status, body, headers = _request(base, method, path, body=b"{}" if method != "GET" else None, token=None)
+    assert status == 405 and headers["Allow"] == allow and body["ok"] is False
+
+
+def test_unknown_path_is_404_for_any_method(v2_server):
+    base, _ = v2_server
+    for method in ("GET", "POST", "DELETE"):
+        status, body, _ = _request(base, method, "/nope", body=b"{}" if method == "POST" else None)
+        assert status == 404 and body["ok"] is False
+
+
+def test_v2_bad_bodies_are_400(v2_server):
+    base, _ = v2_server
+    for raw in (b"", b"not json", b"[]", b"null"):
+        status, body, _ = _request(base, "POST", "/scan", raw)
+        assert status == 400 and body["ok"] is False
+
+
+def test_pair_validates_client(unused_tcp_port, tmp_path):
+    store = PairingStore(tmp_path / "p.json")
+    server = start_bridge_server(lambda: "/tmp", FakeScanTrigger(), store, port=unused_tcp_port)
+    base = f"http://127.0.0.1:{unused_tcp_port}"
+    try:
+        code = store.open_window()
+        assert _request(base, "POST", "/pair", {"code": code, "client": 5}, token=None)[0] == 400
+        assert _request(base, "POST", "/pair", {"code": code, "client": "x" * 201}, token=None)[0] == 400
+        status, body, _ = _request(base, "POST", "/pair", {"code": code, "client": "Chrome"}, token=None)
+        assert status == 200 and body["ok"] is True and store.is_valid(body["token"])
+        status, body, _ = _request(base, "POST", "/pair", {"code": "000000"}, token=None)
+        assert status == 403 and body["ok"] is False and body["error"] == body["message"]
+    finally:
+        server.shutdown(); server.server_close()
+
+
+def test_version_1_request_still_works(v2_server, tmp_path):
+    base, trigger = v2_server
+    status, body = _post(_scan_url(base))
+    assert status == 200 and "output_paths" in body and trigger.called_with.name == "Dossiary Bridge Scan"
