@@ -29,6 +29,12 @@ _EVEN_STDDEV = 4.0
 # Only a strip at least this wide is trimmed, so a narrow even area inside
 # a document (a ruled border, a blank gutter) is never taken for background.
 _MIN_STRIP_MM = 8.0
+# Real paper is never this narrow (a business card is about 54 mm). A trim
+# that would leave less found no paper edge at all -- typically a blank side,
+# which reads as even almost everywhere -- so the page is kept whole and the
+# blank check decides. Seen on a real blank sheet: trimmed to 5 pixels, it no
+# longer looked blank and ended up in the PDF.
+_MIN_PAPER_MM = 30.0
 
 
 def _even_runs(even: list[bool]) -> list[tuple[int, int]]:
@@ -72,6 +78,8 @@ def trim_background(image: Image.Image) -> Image.Image:
     if left_strips:
         left = max(left_strips)
     if (left, right) == (0, width):
+        return image
+    if (right - left) * _SCALE < _MIN_PAPER_MM / 25.4 * dpi:
         return image
 
     out = image.crop((left * _SCALE, 0, min(image.width, right * _SCALE), image.height))

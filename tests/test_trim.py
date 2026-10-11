@@ -65,3 +65,11 @@ def test_keeps_a_strip_narrower_than_the_minimum():
 def test_keeps_the_dpi_for_the_pdf_page_size():
     im = _page([("paper", 420), ("background", 180)])
     assert trim_background(im).info["dpi"] == (DPI, DPI)
+
+
+def test_never_trims_a_page_down_to_a_sliver():
+    # A blank side reads as even almost everywhere; a few uneven columns in
+    # the middle (a fold, a shadow) used to leave a 5-pixel page that the
+    # blank check then kept. Less than 30 mm left means: keep the page.
+    page = _page([("background", 1100), ("paper", 20), ("background", 1100)])
+    assert trim_background(page).size == page.size
