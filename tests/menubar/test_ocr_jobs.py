@@ -123,3 +123,23 @@ def test_worker_thread_processes_jobs(tmp_path):
         q.stop()  # joins the worker, so run_next() has fully finished
     assert q.fetch(job)[0] == 200  # fetch deletes on 200: exactly once
     assert q.fetch(job)[0] == 404
+
+
+def test_copy_to_happens_before_the_job_is_fetchable(tmp_path, monkeypatch):
+    import scanix500.menubar.ocr_jobs as mod
+    q, _ = make(tmp_path)
+    safety = plain(tmp_path, "safety.pdf")
+    job = q.submit(safety, "safety.pdf", 1, [], copy_to=str(safety))
+    seen = {}
+    real = mod.shutil.copyfile
+
+    def spy(src, dst, *a, **k):
+        if str(dst) == str(safety):
+            seen["fetch_during_copy"] = q.fetch(job)  # lock is free here
+        return real(src, dst, *a, **k)
+
+    monkeypatch.setattr(mod.shutil, "copyfile", spy)
+    q.run_next()
+    assert seen["fetch_during_copy"][0] == 202  # still not "done" while copying
+    assert q.fetch(job)[0] == 200
+    assert safety.read_bytes().endswith(b"%SEARCHABLE ")

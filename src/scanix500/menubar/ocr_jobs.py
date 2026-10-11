@@ -138,14 +138,15 @@ class OcrJobQueue:
         except Exception as e:  # noqa: BLE001 - never kill the worker
             logger.exception("OCR job %s failed", job_id)
             meta["state"], meta["message"] = "failed", f"The scan couldn't be made searchable: {e}"
-        with self._lock:
-            if self._dir(job_id).exists():
-                self._write_meta(job_id, meta)
         if meta["state"] == "done" and meta.get("copy_to"):
+            # Before "done" is visible, so a fetch can't delete the job first.
             try:
                 shutil.copyfile(dst, meta["copy_to"])
             except OSError:
                 pass  # the safety-net copy stays the plain scan -- not fatal
+        with self._lock:
+            if self._dir(job_id).exists():
+                self._write_meta(job_id, meta)
         return True
 
     def start(self) -> None:
