@@ -1,4 +1,5 @@
 import logging
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -7,6 +8,23 @@ from PIL import Image
 from pypdf import PdfReader, PdfWriter
 
 logger = logging.getLogger(__name__)
+
+# Where Homebrew, a pip --user install and the usual installers put ocrmypdf,
+# tesseract and ghostscript. The menu bar app's LaunchAgent starts with a
+# minimal PATH (the venv, /usr/bin, /bin), so before this every scan made
+# through it silently came out without a text layer: ocrmypdf wasn't found
+# and the pages were kept image-only (seen on real scans, 2026-10-11).
+TOOL_DIRS = ("/opt/homebrew/bin", "/usr/local/bin", str(Path.home() / ".local" / "bin"))
+
+
+def extend_tool_path(environ=os.environ) -> None:
+    """Appends TOOL_DIRS missing from PATH. Child processes (the scanix500
+    CLI, ocrmypdf, tesseract) inherit it."""
+    parts = [p for p in environ.get("PATH", "").split(os.pathsep) if p]
+    environ["PATH"] = os.pathsep.join(parts + [d for d in TOOL_DIRS if d not in parts])
+
+
+extend_tool_path()
 
 # ocrmypdf/Tesseract default to English-only OCR if no language is given —
 # confirmed on real hardware that this silently produced degraded accuracy

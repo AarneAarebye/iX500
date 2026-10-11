@@ -230,3 +230,14 @@ def test_installed_ocr_languages_none_when_tesseract_fails(monkeypatch):
     monkeypatch.setattr(pb, "_installed_languages", None)
     with patch("scanix500.pdf_builder.subprocess.run", side_effect=FileNotFoundError):
         assert pb.installed_ocr_languages() is None
+
+
+def test_extend_tool_path_adds_the_usual_install_folders_once():
+    from scanix500.pdf_builder import TOOL_DIRS, extend_tool_path
+    env = {"PATH": "/venv/bin:/usr/bin:/bin:/opt/homebrew/bin"}
+    extend_tool_path(env)
+    parts = env["PATH"].split(":")
+    assert parts[:4] == ["/venv/bin", "/usr/bin", "/bin", "/opt/homebrew/bin"]
+    assert all(parts.count(d) == 1 for d in TOOL_DIRS)
+    extend_tool_path(env)
+    assert env["PATH"].split(":") == parts
