@@ -87,3 +87,19 @@ def test_keeps_a_smooth_bright_paper_margin():
     # 248; the background is flatter (0.3-0.5) and grayer (233-241).
     im = _page([("paper", 900), ("smooth", 300)])
     assert trim_background(im).size == im.size
+
+
+def test_keeps_a_smooth_gray_paper_margin():
+    # Gray enough to pass the brightness limit, but not flat like the
+    # background: the texture rule alone must keep it.
+    rng = random.Random(2)
+    im = _page([("paper", 900), ("background", 300)])
+    px = im.load()
+    patch = {}
+    for x in range(900, 1200):
+        for y in range(im.height):
+            key = (x // 8, y // 8)
+            if key not in patch:
+                patch[key] = max(0, min(255, int(rng.gauss(238, 2.5))))
+            px[x, y] = (patch[key],) * 3
+    assert trim_background(im).size == im.size

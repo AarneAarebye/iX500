@@ -39,7 +39,7 @@ for the implementation plan.
 
 ## Status
 
-**All four phases are complete, and protocol version 2 (0.4.0) is built but not yet checked on the real scanner.**
+**All four phases are complete, and protocol version 2 (0.4.0) is checked on the real scanner (2026-10-11).**
 
 - **Phase 1 — CLI pipeline.** The `scanix500` command-line tool: ADF duplex capture,
   blank-page detection, splitting on separator sheets, PDF assembly, and OCR.
@@ -479,7 +479,8 @@ and no query string); the contract is dossiary-scan-helper's `PROTOCOL.md`.
   `swcrop` cut text off a letter's sides. ocrmypdf's `--deskew` straightens
   slight tilts while adding the text layer, scanix500's own trim cuts off
   only the scanner's gray background (never white paper), and a page within
-  5 mm of A4, A5, A6, Letter or Legal comes out at exactly that size.
+  5 mm of A4, A5 or A6 comes out at exactly that size. Straightening runs
+  with OCR, so a scan with OCR off isn't straightened.
 
 ### Use (version 1)
 

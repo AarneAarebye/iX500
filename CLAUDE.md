@@ -98,13 +98,14 @@ TDD steps.
   A4, and three steps shrink it to the sheet: `PySaneDevice` turns on the
   driver's `ald` (the scanner's sensor ends the page at the paper's end)
   and, until 0.4.0, `swcrop`/`swdeskew` (both off since -- see below), and `cli.py` then runs `trim.py`'s
-  `trim_background()` on every page before the blank filter. The trim is
-  needed because `swcrop` can't find a narrow sheet's side edges: the ADF
-  background is as light as white paper. It's told apart by texture
-  instead -- an even strip (column std. dev. < 4 on a 1/4-size copy) at
-  least 8 mm wide at a page's side is cut off. Verified with a real A5
-  sheet (149x212 mm out). If a page ever loses content at a side, check
-  that threshold against the real scan before changing anything else.
+  `trim_background()` on every page before the blank filter, then
+  `snap.py`. The trim cuts off a strip at least 8 mm wide at a page's side
+  whose columns are both flat (std. dev. < 1.5 on a 1/4-size copy) and gray
+  (mean <= 245), never leaving less than 30 mm -- see the protocol version 2
+  bullet below for the measurements behind those numbers. Verified with a
+  real A5 sheet (148x210 mm out after snapping) and a smooth-paper A4 letter
+  (untouched). If a page ever loses content at a side, check those
+  thresholds against the real scan before changing anything else.
 - **`start-menubar.sh` / `stop-menubar.sh`** start or stop the menu bar
   app. Stop unloads the LaunchAgent instead of killing the process, since
   its `KeepAlive` would restart a killed app.
@@ -134,10 +135,11 @@ TDD steps.
   `swcrop` is off too** (it cut 13-35 mm of text off a real letter's sides),
   and `trim.py` now counts a column as background only when it is both
   flatter than 1.5 (standard deviation on a 1/4-size copy) and no brighter
-  than 242: measured with the driver's processing off, the background is
+  than 245: measured with the driver's processing off, the background is
   0.3-0.5 at 233-241, smooth office paper 2.0-2.7 at 248 (it used to be
   trimmed away), textured paper 6-10. **`snap.py`** then gives a page within
-  5 mm of A4, A5, A6, Letter or Legal (either way round) exactly that size,
+  5 mm of A4, A5, A6, Letter or Legal (either way round; with the A4 scan
+  area only A4/A5/A6 can match) exactly that size,
   padding with white or cropping, centred; a real A5 sheet came out 152 mm
   wide after the trim and 148 x 210 mm after snapping. A Paper size choice
   in Dossiary's dialog would need a protocol field and is a separate

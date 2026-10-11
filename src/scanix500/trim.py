@@ -24,9 +24,11 @@ from PIL import Image, ImageStat
 _SCALE = 4
 # A column is background when its brightness varies less than this top to
 # bottom AND it is no brighter than _BACKGROUND_MAX. Measured: background
-# 0.3-0.5 at 233-241; paper 6-10, smooth white paper 2.0-2.7 at 248.
+# 0.3-0.5 at 233-241; paper 6-10, smooth white paper 2.0-2.7 at 248. The
+# brightness limit sits halfway between, so a slightly brighter background
+# (lamp warm-up, another resolution) still counts.
 _EVEN_STDDEV = 1.5
-_BACKGROUND_MAX = 242
+_BACKGROUND_MAX = 245
 # Only a strip at least this wide is trimmed, so a narrow even area inside
 # a document (a ruled border, a blank gutter) is never taken for background.
 _MIN_STRIP_MM = 8.0

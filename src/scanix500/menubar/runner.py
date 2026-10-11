@@ -10,7 +10,8 @@ from pathlib import Path
 from scanix500.menubar.profiles import Profile
 
 _KNOWN_MESSAGES = {"No pages scanned.", "All pages were blank; no PDF written."}
-_SANE_DEBUG_LINE = re.compile(r"\[\d{2}:\d{2}:\d{2}\.\d+\] \[")
+# With or without a timestamp, e.g. "[13:19:42.848668] [bjnp] …" or "[bjnp] …".
+_SANE_DEBUG_LINE = re.compile(r"(\[\d{2}:\d{2}:\d{2}\.\d+\] )?\[[A-Za-z0-9_]+\] ")
 # cli.py's lines for a batch that stopped early but kept its earlier pages.
 _STOPPED_PREFIXES = ("Multi-feed detected", "Scanner stopped at sheet")
 

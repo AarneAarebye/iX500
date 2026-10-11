@@ -20,7 +20,10 @@ class MultiFeedError(Exception):
     """
 
     def __init__(self, sheet_index: int, pages_captured: list, reason: str | None = None):
-        super().__init__(f"Multi-feed detected at sheet {sheet_index}")
+        super().__init__(
+            f"Scanner stopped at sheet {sheet_index + 1}: {reason}" if reason
+            else f"Multi-feed detected at sheet {sheet_index}"
+        )
         self.sheet_index = sheet_index
         self.pages_captured = pages_captured
         # The driver's own words when a read failed (a jam, an I/O error),

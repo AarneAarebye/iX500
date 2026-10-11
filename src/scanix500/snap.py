@@ -4,7 +4,9 @@ The paper-end sensor and the background trim measure each sheet, which
 leaves an A4 letter at, say, 207 x 296 mm. A page within a few millimetres
 of A4, A5, A6, US Letter or US Legal (either way round) is padded with
 white or cropped, centred, to exactly that size; anything else (a receipt,
-a business card) keeps its measured size.
+a business card) keeps its measured size. The iX500's scan area is A4, so
+in practice only A4, A5 and A6 can match today; Letter and Legal are here
+for a larger scan area (see the planned Paper size choice).
 """
 
 from __future__ import annotations
@@ -33,6 +35,8 @@ def _target_mm(w_mm: float, h_mm: float) -> tuple[float, float] | None:
 
 
 def snap_to_standard_size(image: Image.Image) -> Image.Image:
+    if image.mode not in ("1", "L", "RGB"):
+        return image  # white can't be named simply for other modes; none reach here today
     dpi = image.info.get("dpi", (300, 300))[0]
     target = _target_mm(image.width / dpi * 25.4, image.height / dpi * 25.4)
     if target is None:
@@ -40,7 +44,7 @@ def snap_to_standard_size(image: Image.Image) -> Image.Image:
     size = (round(target[0] / 25.4 * dpi), round(target[1] / 25.4 * dpi))
     if size == image.size:
         return image
-    white = 255 if image.mode in ("L", "1") else (255,) * len(image.getbands())
+    white = 255 if image.mode in ("L", "1") else (255, 255, 255)
     out = Image.new(image.mode, size, white)
     out.paste(image, ((size[0] - image.width) // 2, (size[1] - image.height) // 2))
     out.info["dpi"] = image.info.get("dpi", (dpi, dpi))

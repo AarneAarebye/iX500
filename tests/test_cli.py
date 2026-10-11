@@ -192,3 +192,35 @@ def test_main_reports_why_the_scanner_stopped(tmp_path, capsys):
     ):
         assert main([str(tmp_path), "--skip-ocr"]) == 1
     assert "Scanner stopped at sheet 2 (Error during device I/O)" in capsys.readouterr().err
+
+
+def test_a_stop_before_any_sheet_is_a_plain_failure(tmp_path, capsys):
+    err = MultiFeedError(0, [], reason="Document feeder jammed")
+    with patch("scanix500.cli.PySaneDevice"), patch("scanix500.cli.capture_pages", side_effect=err), patch(
+        "scanix500.cli.build_pdf"
+    ) as build:
+        assert main([str(tmp_path), "--skip-ocr"]) == 1
+    out = capsys.readouterr()
+    assert "Scan failed: the scanner stopped at sheet 1 (Document feeder jammed)." in out.err
+    assert out.out == "" and not build.called
+
+
+def test_a_stop_counts_the_sheets_it_kept(tmp_path, capsys):
+    err = MultiFeedError(1, [PagePair(_content_image(), _content_image())], reason="Error during device I/O")
+    with patch("scanix500.cli.PySaneDevice"), patch("scanix500.cli.capture_pages", side_effect=err), patch(
+        "scanix500.cli.build_pdf"
+    ):
+        main([str(tmp_path), "--skip-ocr"])
+    assert "kept the 1 sheet before it." in capsys.readouterr().err
+
+
+def test_cli_snaps_both_sides_after_trimming(tmp_path):
+    pages = [PagePair(_content_image(), _content_image())]
+    calls = []
+    with patch("scanix500.cli.PySaneDevice"), patch("scanix500.cli.capture_pages", return_value=pages), patch(
+        "scanix500.cli.trim_background", side_effect=lambda im: calls.append("trim") or im
+    ), patch("scanix500.cli.snap_to_standard_size", side_effect=lambda im: calls.append("snap") or im), patch(
+        "scanix500.cli.build_pdf"
+    ):
+        main([str(tmp_path), "--skip-ocr", "--skip-blank-filter"])
+    assert calls == ["trim", "snap", "trim", "snap"]

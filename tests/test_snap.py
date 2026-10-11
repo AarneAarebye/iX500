@@ -42,3 +42,18 @@ def test_padding_is_white_and_centred():
     assert out.mode == "RGB"
     assert out.getpixel((0, 1000)) == (255, 255, 255)
     assert out.getpixel((out.width // 2, 1000)) == (128, 128, 128)
+
+
+def test_one_bit_pages_are_padded_white():
+    im = Image.new("1", (_px(206), _px(297)), 0)
+    im.info["dpi"] = (DPI, DPI)
+    out = snap_to_standard_size(im)
+    assert out.size == (_px(210), _px(297)) and out.getpixel((0, 1000)) == 255
+
+
+def test_other_modes_and_missing_dpi():
+    rgba = Image.new("RGBA", (_px(206), _px(297)))
+    rgba.info["dpi"] = (DPI, DPI)
+    assert snap_to_standard_size(rgba).size == rgba.size
+    no_dpi = Image.new("L", (_px(206), _px(297)))  # assumed 300 dpi
+    assert snap_to_standard_size(no_dpi).size == (_px(210), _px(297))

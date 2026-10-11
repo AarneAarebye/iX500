@@ -208,3 +208,14 @@ def test_a_scanner_stop_with_pages_is_partial_and_keeps_the_reason():
     )
     assert result.partial and not result.ok
     assert result.message.startswith("Scanner stopped at sheet 3 (Error during device I/O)")
+
+
+def test_untimestamped_sane_lines_are_filtered_too():
+    result = parse_scan_output(1, "", "[bjnp] add_scanner: Scanner MF650C Series is not supported\nScan failed: x\n")
+    assert result.message == "Scan failed: x"
+
+
+def test_a_stop_before_any_sheet_is_a_plain_failure():
+    result = parse_scan_output(1, "", SANE_NOISE + "Scan failed: the scanner stopped at sheet 1 (Document feeder jammed).\n")
+    assert not result.ok and not result.partial
+    assert result.message == "Scan failed: the scanner stopped at sheet 1 (Document feeder jammed)."

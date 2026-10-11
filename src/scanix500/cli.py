@@ -42,12 +42,18 @@ def main(argv: list[str] | None = None) -> int:
         print("No pages scanned.")
         return 0
     except MultiFeedError as e:
+        if e.reason and not e.pages_captured:
+            # Stopped before any sheet came through: nothing to keep, so a
+            # plain failure rather than a partial scan of zero pages.
+            print(f"Scan failed: the scanner stopped at sheet 1 ({e.reason}).", file=sys.stderr)
+            return 1
         if e.reason:
             # A failed read: the driver's own words say what happened.
             # sheet_index counts the sheets finished before it.
+            kept = len(e.pages_captured)
             print(
                 f"Scanner stopped at sheet {e.sheet_index + 1} ({e.reason}); "
-                f"processing {len(e.pages_captured)} pages captured before it.",
+                f"kept the {kept} sheet{'' if kept == 1 else 's'} before it.",
                 file=sys.stderr,
             )
         else:
