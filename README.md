@@ -350,7 +350,7 @@ is unit-tested — see `tests/menubar/test_app.py`):
       `python3 -c "import base64,sys; open('out.pdf','wb').write(base64.b64decode(sys.stdin.read()))"`,
       piping the field's value in) and confirm it opens as a valid PDF.
 - [ ] `curl -i http://127.0.0.1:8765/health` → `200` with
-      `{"service": "scanix500-bridge"}`, and the menu bar icon does
+      `{"ok": true, "helper": "scanix500", "version": "0.4.0", "protocol": 2, "paired": false, "service": "scanix500-bridge"}`, and the menu bar icon does
       **not** change to its scanning state (proves the probe never
       touches the scanner).
 - [ ] `curl -i -X POST "http://127.0.0.1:8765/scan?skip_blank_filter=false"`
@@ -457,6 +457,8 @@ and no query string); the contract is dossiary-scan-helper's `PROTOCOL.md`.
   still a version 1 request, answered as before.
 - The iX500 is always listed in `/scanners`; the bridge doesn't probe the
   scanner for that. With it unplugged, a scan answers `503`.
+- Version 2 file entries are `{name, pages, data}` (see dossiary-scan-helper's
+  `PROTOCOL.md`), unlike version 1's `{filename, content_base64}`.
 - Black & white is scanned as gray and then thresholded to 1-bit (at 160,
   still to be confirmed on the real scanner).
 - Version 2 error bodies carry the message under both `message` and `error`,
@@ -534,9 +536,9 @@ again.
 
     curl -i -X POST -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/scan?skip_blank_filter=false&skip_ocr=false&split_on_blank=false"
 
-**`GET /health`** is a separate, lightweight endpoint a caller can probe
-before ever attempting a scan — `200` with `{"service":
-"scanix500-bridge", "paired": false}` immediately (`paired` says whether
+**`GET /health`** (and, for version 2, **`GET /scanners`**, which lists the iX500) is a separate, lightweight endpoint a caller can probe
+before ever attempting a scan — `200` with
+`{"ok": true, "helper": "scanix500", "version": "0.4.0", "protocol": 2, "paired": false, "service": "scanix500-bridge"}` immediately (`paired` says whether
 the request's own `Authorization` token is valid), no busy-guard interaction, no scanner
 involvement. It exists so a client can auto-detect whether the bridge is
 running on the default port before falling back to asking the person to
@@ -573,22 +575,24 @@ your files directly, so that's outside what the bridge protects against.
 
 [Dossiary](https://github.com/AarneAarebye/Dossiary) (a separate app)
 scans through this bridge from its **📷 Scan** dialog. Since Dossiary
-v1.44.0, Dossiary:
+v1.44.0, Dossiary uses protocol version 2:
 
 - finds the bridge on `localhost:8765` by itself (a bridge on another port
   can be entered in the dialog or in Field Settings, `scan_bridge_url`);
-- lists it as "ScanSnap iX500", next to any scanners
+- lists it as "ScanSnap iX500" (`GET /scanners`), next to any scanners
   [dossiary-scan-helper](https://github.com/AarneAarebye/dossiary-scan-helper)
   offers on port 8766;
 - pairs inline the first time (a code field in the dialog);
-- calls the parameterized `POST /scan` with "split on blank pages" as the
-  one setting, and writes the returned `files` into the open library's
-  `inbox/`.
+- sends a JSON `POST /scan` with the chosen sides, color mode, resolution
+  and extras (split on blank pages, skip blank pages), and writes the
+  returned `files` into the open library's `inbox/`.
 
 **📸 Scan Multi** opens the same dialog with "split on blank pages"
-ticked. Dossiary v1.43.0 pairs through a separate dialog instead; older
-versions can't pair and get `401`. There's no profile to create and no
-name to keep in sync — just run `scanix500-menubar`.
+pre-ticked. The query-string `POST /scan` described under "Use (version 1)"
+is protocol version 1, used by Dossiary v1.43.0 and earlier: v1.43.0 pairs
+through a separate dialog, and older versions can't pair and get `401`.
+There's no profile to create and no name to keep in sync — just run
+`scanix500-menubar`.
 
 Optionally, change **"Set Bridge Scan Folder…"** if you don't want the
 safety-net copy landing in `~/Documents/Scans`.

@@ -11,6 +11,7 @@ PID=$!
 trap 'kill "$PID" 2>/dev/null || true' EXIT
 for _ in $(seq 1 50); do
   if curl -sf "http://127.0.0.1:$PORT/health" > /dev/null; then break; fi
+  kill -0 "$PID" 2>/dev/null || { echo "bridge exited"; cat /tmp/scanix500-conformance.log; exit 1; }
   sleep 0.2
 done
 curl -sf "http://127.0.0.1:$PORT/health" > /dev/null || { echo "bridge did not start"; cat /tmp/scanix500-conformance.log; exit 1; }
