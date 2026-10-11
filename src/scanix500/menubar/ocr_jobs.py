@@ -166,8 +166,11 @@ class OcrJobQueue:
             # Before "done" is visible, so a fetch can't delete the job first.
             tmp = meta["copy_to"] + ".tmp"
             try:
-                shutil.copyfile(dst, tmp)
-                os.replace(tmp, meta["copy_to"])
+                # Only while the safety-net copy is still the plain scan:
+                # moved away or changed by the person, it is left alone.
+                if Path(meta["copy_to"]).read_bytes() == src.read_bytes():
+                    shutil.copyfile(dst, tmp)
+                    os.replace(tmp, meta["copy_to"])
             except OSError:
                 try:
                     os.unlink(tmp)
@@ -177,6 +180,10 @@ class OcrJobQueue:
             with self._lock:
                 if self._dir(job_id).exists():
                     self._write_meta(job_id, meta)
+                    try:
+                        src.unlink()
+                    except OSError:
+                        pass
         except Exception:  # noqa: BLE001
             logger.exception("Couldn't record the result of OCR job %s", job_id)
             try:
@@ -188,18 +195,27 @@ class OcrJobQueue:
                 logger.exception("Couldn't mark OCR job %s failed", job_id)
         return True
 
+    def _safe_expire(self) -> None:
+        try:
+            self._expire()
+        except Exception:  # noqa: BLE001
+            logger.exception("Expiring old OCR jobs failed")
+
     def start(self) -> None:
         if self._thread:
             return
         with self._lock:
             self._stopping = False
             self._pending = True  # look once at what is on disk
+            self._safe_expire()
 
         def loop():
             while True:
                 with self._lock:
                     while not self._stopping and not self._pending:
                         self._wake.wait(timeout=60)
+                        if not self._stopping and not self._pending:
+                            self._safe_expire()
                     if self._stopping:
                         return
                     self._pending = False

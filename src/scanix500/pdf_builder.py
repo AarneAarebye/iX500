@@ -80,6 +80,7 @@ def ocr_pdf(input_path: Path, output_path: Path, languages: list[str]) -> None:
         reader = PdfReader(str(input_path))
     except Exception as e:  # noqa: BLE001
         raise OcrFailed(f"The scan's PDF couldn't be read: {e}") from e
+    any_done = False
     with tempfile.TemporaryDirectory() as tmp:
         page_paths = []
         for i, page in enumerate(reader.pages):
@@ -96,7 +97,31 @@ def ocr_pdf(input_path: Path, output_path: Path, languages: list[str]) -> None:
                 raise OcrFailed("ocrmypdf isn't installed, so the scan couldn't be made searchable.") from e
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
                 page_paths.append(single)  # this page stays without text
+                continue
+            any_done = True
+        if not any_done:
+            raise OcrFailed("No page could be made searchable — is the OCR language installed?")
         _merge_pdfs(page_paths, output_path)
+
+
+_installed_languages: list[str] | None = None
+_installed_checked = False
+
+
+def installed_ocr_languages() -> list[str] | None:
+    """Tesseract's installed language codes (`tesseract --list-langs`), looked
+    up once. None when that can't be asked, meaning: don't filter."""
+    global _installed_languages, _installed_checked
+    if not _installed_checked:
+        _installed_checked = True
+        try:
+            out = subprocess.run(["tesseract", "--list-langs"], check=True, capture_output=True,
+                                 text=True, timeout=30).stdout
+            langs = [ln.strip() for ln in out.splitlines()[1:] if ln.strip()]
+            _installed_languages = langs or None
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+            _installed_languages = None
+    return _installed_languages
 
 
 def build_pdf(images: list[Image.Image], output_path: Path, *, ocr: bool = True) -> None:

@@ -458,7 +458,16 @@ one or both sides, color / gray / black & white, 300 or 600 dpi, and
 with protocol version 2 (`GET /scanners`, then `POST /scan` with a JSON body
 and no query string); the contract is dossiary-scan-helper's `PROTOCOL.md`.
 
-- OCR still runs on every scan (`deu+eng`).
+- A version 2 scan that asks for OCR (`ocr: true`) is scanned *without* OCR,
+  so the pages reach Dossiary at once; each file then gets an `ocrJob` and is
+  made searchable in the background with ocrmypdf (`--deskew` on the
+  searchable copy only), one job at a time. Dossiary fetches the result from
+  `GET /ocr/<id>`; the safety-net copy in the scan folder is replaced by the
+  searchable version only if it is still there and unchanged. If queuing a
+  job fails, the file has no `ocrJob` and Dossiary runs its own OCR. The
+  languages offered are the iX500's list limited to those `tesseract
+  --list-langs` reports as installed. Version 1 requests still run OCR
+  (`deu+eng`) as part of the scan.
 - Older Dossiary releases keep working: a `POST /scan` with a query string is
   still a version 1 request, answered as before.
 - The iX500 is always listed in `/scanners`; the bridge doesn't probe the
@@ -472,8 +481,8 @@ and no query string); the contract is dossiary-scan-helper's `PROTOCOL.md`.
 - Version 2 error bodies carry the message under both `message` and `error`,
   so Dossiary 1.43 shows them too.
 - `scripts/run-conformance.sh [path to dossiary-scan-helper]` runs that
-  repo's conformance suite against `scanix500-bridge --fake-scanners` (seven
-  fake scanners, pairing code `000000`, testing only; 43 tests pass).
+  repo's conformance suite against `scanix500-bridge --fake-scanners` (eight
+  fake scanners, pairing code `000000`, testing only; 51 tests pass).
 - Pages are no longer straightened or cropped by the scanner driver:
   `swdeskew` rotated a straight-fed, folded sheet by about 20°, and
   `swcrop` cut text off a letter's sides. ocrmypdf's `--deskew` straightens

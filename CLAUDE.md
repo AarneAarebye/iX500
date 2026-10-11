@@ -148,10 +148,10 @@ TDD steps.
   even almost everywhere and was once trimmed to 5 pixels, which then no
   longer looked blank and ended up in the PDF.
   `keep_blank_pages` serves split-only (split on blank pages without skipping
-  them). `fakes.py` (`FakeBackend`, `FakePairing`: seven scanners, code
+  them). `fakes.py` (`FakeBackend`, `FakePairing`: eight scanners, code
   `000000`) and `bridge_main.py` (`scanix500-bridge --fake-scanners`) exist
   only so `scripts/run-conformance.sh` can run dossiary-scan-helper's
-  conformance suite (43 tests) against the bridge.
+  conformance suite (51 tests) against the bridge.
 
 ## Project phasing
 

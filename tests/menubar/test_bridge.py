@@ -652,3 +652,23 @@ def test_backend_without_ocr_does_not_offer_it(tmp_path):
         validate({"scanner": "sane:ix500", "ocr": True}, backend.scanners())
     assert info.value.status == 422
     assert backend.ocr_job("x" * 30)[0] == 404
+
+
+def test_scan_survives_a_failing_ocr_submit(ocr_server, monkeypatch):
+    base, _, queue, _ = ocr_server
+
+    def boom(*a, **k):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(queue, "submit", boom)
+    status, body, _ = _request(base, "POST", "/scan", {"scanner": "sane:ix500", "ocr": True})
+    assert status == 200 and "ocrJob" not in body["files"][0] and len(body["files"]) == 1
+
+
+def test_offered_ocr_languages_are_the_installed_ones(tmp_path, monkeypatch):
+    from scanix500.menubar.bridge import RealBackend
+    monkeypatch.setattr("scanix500.menubar.bridge.installed_ocr_languages", lambda: ["eng", "deu", "osd"])
+    backend = RealBackend(lambda: str(tmp_path), FakeScanTrigger(), ocr_jobs=False)
+    assert RealBackend(lambda: str(tmp_path), FakeScanTrigger()).scanners()[0]["ocr"]["languages"] == ["deu", "eng"]
+    monkeypatch.setattr("scanix500.menubar.bridge.installed_ocr_languages", lambda: None)
+    assert "fra" in RealBackend(lambda: str(tmp_path), FakeScanTrigger()).scanners()[0]["ocr"]["languages"]

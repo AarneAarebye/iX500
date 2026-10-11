@@ -281,3 +281,49 @@ def test_failed_final_write_marks_job_failed(tmp_path, monkeypatch):
     monkeypatch.setattr(q, "_write_meta", flaky)
     q.run_next()
     assert q.fetch(job)[0] == 500
+
+
+def test_copy_to_left_alone_when_moved_away(tmp_path):
+    q, _ = make(tmp_path)
+    safety = plain(tmp_path, "safety.pdf")
+    q.submit(safety, "safety.pdf", 1, [], copy_to=str(safety))
+    safety.unlink()
+    q.run_next()
+    assert not safety.exists() and not Path(str(safety) + ".tmp").exists()
+
+
+def test_copy_to_left_alone_when_changed(tmp_path):
+    q, _ = make(tmp_path)
+    safety = plain(tmp_path, "safety.pdf")
+    q.submit(safety, "safety.pdf", 1, [], copy_to=str(safety))
+    safety.write_bytes(b"%PDF-1.4 edited by hand")
+    q.run_next()
+    assert safety.read_bytes() == b"%PDF-1.4 edited by hand"
+
+
+def test_input_is_removed_once_finished(tmp_path):
+    q, _ = make(tmp_path)
+    job = q.submit(plain(tmp_path), "a.pdf", 1, [])
+    q.run_next()
+    assert not (tmp_path / "jobs" / job / "input.pdf").exists()
+    assert (tmp_path / "jobs" / job / "result.pdf").exists()
+    q2, _ = make(tmp_path / "x", ocr=lambda s, d, l: (_ for _ in ()).throw(OcrFailed("no")))
+    (tmp_path / "x").mkdir(exist_ok=True)
+    job2 = q2.submit(plain(tmp_path), "b.pdf", 1, [])
+    q2.run_next()
+    assert not (tmp_path / "x" / "jobs" / job2 / "input.pdf").exists()
+
+
+def test_start_expires_old_jobs(tmp_path):
+    q, clock = make(tmp_path)
+    job = q.submit(plain(tmp_path), "a.pdf", 1, [])
+    clock.now += 8 * 24 * 3600
+    q.start()
+    try:
+        for _ in range(100):
+            if not (tmp_path / "jobs" / job).exists():
+                break
+            threading.Event().wait(0.05)
+        assert not (tmp_path / "jobs" / job).exists()
+    finally:
+        q.stop()

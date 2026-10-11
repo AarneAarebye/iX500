@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 import re
 import threading
@@ -12,11 +13,14 @@ from typing import Protocol
 from urllib.parse import parse_qs, urlsplit
 
 from scanix500 import __version__
+from scanix500.pdf_builder import installed_ocr_languages
 from scanix500.menubar.ocr_jobs import OcrJobQueue, default_ocr_jobs_path
 from scanix500.menubar.pairing import PairingError, PairingStore, bearer_token
 from scanix500.menubar.profiles import Profile
 from scanix500.menubar.protocol_v2 import IX500, ProtocolError, error_body, profile_for, response_from_result, validate
 from scanix500.menubar.runner import ScanResult
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_PORT = 8765
 MAX_BODY_BYTES = 1_000_000
@@ -162,6 +166,10 @@ class RealBackend:
         entry = dict(IX500)
         if self._no_ocr:
             del entry["ocr"]
+        else:
+            installed = installed_ocr_languages()
+            if installed is not None:
+                entry["ocr"] = {"languages": [c for c in entry["ocr"]["languages"] if c in installed]}
         return [entry]
 
     def scan(self, scanner: dict, settings: dict) -> tuple[int, dict]:
@@ -173,8 +181,11 @@ class RealBackend:
             for entry in body.get("files", []):
                 path = by_name.get(entry["name"])
                 if path:
-                    entry["ocrJob"] = self._ocr_jobs.submit(Path(path), entry["name"], entry["pages"],
-                                                            settings["ocrLanguages"], copy_to=path)
+                    try:
+                        entry["ocrJob"] = self._ocr_jobs.submit(Path(path), entry["name"], entry["pages"],
+                                                                settings["ocrLanguages"], copy_to=path)
+                    except Exception:  # noqa: BLE001 - the scan itself succeeded
+                        logger.exception("Couldn't queue background OCR for %s", entry["name"])
         return status, body
 
     def ocr_job(self, job_id: str) -> tuple[int, dict]:

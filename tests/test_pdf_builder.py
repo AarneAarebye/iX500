@@ -198,3 +198,35 @@ def test_ocr_pdf_timeouts_count_as_failures(tmp_path):
         ocr_pdf(src, tmp_path / "out.pdf", ["deu"])
     assert calls == [30 * 60, 10 * 60, 10 * 60]
     assert len(PdfReader(str(tmp_path / "out.pdf")).pages) == 2
+
+
+def test_ocr_pdf_raises_when_no_page_could_be_made(tmp_path):
+    src = tmp_path / "in.pdf"
+    build_pdf([_content_image(), _content_image()], src, ocr=False)
+    with patch("scanix500.pdf_builder.subprocess.run",
+               side_effect=lambda cmd, **k: (_ for _ in ()).throw(subprocess_module.CalledProcessError(1, cmd))):
+        with pytest.raises(OcrFailed, match="No page could be made searchable"):
+            ocr_pdf(src, tmp_path / "out.pdf", ["xxx"])
+    assert not (tmp_path / "out.pdf").exists()
+
+
+def test_installed_ocr_languages_listed_once_and_cached(monkeypatch):
+    import scanix500.pdf_builder as pb
+    monkeypatch.setattr(pb, "_installed_checked", False)
+    monkeypatch.setattr(pb, "_installed_languages", None)
+
+    class R:
+        stdout = 'List of available languages in "/x/tessdata/" (3):\neng\ndeu\nosd\n'
+
+    with patch("scanix500.pdf_builder.subprocess.run", return_value=R()) as run:
+        assert pb.installed_ocr_languages() == ["eng", "deu", "osd"]
+        assert pb.installed_ocr_languages() == ["eng", "deu", "osd"]
+    assert run.call_count == 1
+
+
+def test_installed_ocr_languages_none_when_tesseract_fails(monkeypatch):
+    import scanix500.pdf_builder as pb
+    monkeypatch.setattr(pb, "_installed_checked", False)
+    monkeypatch.setattr(pb, "_installed_languages", None)
+    with patch("scanix500.pdf_builder.subprocess.run", side_effect=FileNotFoundError):
+        assert pb.installed_ocr_languages() is None
