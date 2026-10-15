@@ -241,3 +241,30 @@ def test_extend_tool_path_adds_the_usual_install_folders_once():
     assert all(parts.count(d) == 1 for d in TOOL_DIRS)
     extend_tool_path(env)
     assert env["PATH"].split(":") == parts
+
+
+def test_build_pdf_titles_the_pdf_with_its_file_name(tmp_path):
+    # Without a title, ocrmypdf writes the literal "'Untitled'", which PDF
+    # viewers (Chrome's tab, Finder's Get Info) then show.
+    output_path = tmp_path / "scan_2026-10-15_220004.pdf"
+
+    build_pdf([_content_image()], output_path, ocr=False)
+
+    assert PdfReader(str(output_path)).metadata.title == "scan_2026-10-15_220004"
+
+
+def test_ocr_pdf_page_by_page_keeps_the_input_title(tmp_path):
+    # Background OCR works on a copy named input.pdf; the result must keep
+    # the scan's own title, not take "input" or "result" from those names.
+    src = tmp_path / "input.pdf"
+    build_pdf([_content_image()], tmp_path / "scan_2026-10-15_220004.pdf", ocr=False)
+    (tmp_path / "scan_2026-10-15_220004.pdf").rename(src)
+
+    def fake_run(cmd, check, capture_output, timeout=None):
+        if "page_" not in cmd[-2]:  # the whole-file run fails
+            raise subprocess_module.CalledProcessError(1, cmd)
+        Path(cmd[-1]).write_bytes(Path(cmd[-2]).read_bytes())
+
+    with patch("scanix500.pdf_builder.subprocess.run", side_effect=fake_run):
+        ocr_pdf(src, tmp_path / "result.pdf", ["deu"])
+    assert PdfReader(str(tmp_path / "result.pdf")).metadata.title == "scan_2026-10-15_220004"
