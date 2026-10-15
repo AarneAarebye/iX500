@@ -2,6 +2,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from scanix500 import __version__
 from scanix500.bw import to_black_and_white
 from scanix500.blank_filter import filter_pages
 from scanix500.capture import PagePair, PySaneDevice, capture_pages
@@ -14,6 +15,7 @@ from scanix500.trim import trim_background
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="scanix500")
+    parser.add_argument("--version", action="version", version=f"scanix500 {__version__}")
     parser.add_argument("destination", type=Path)
     parser.add_argument("--skip-blank-filter", action="store_true")
     parser.add_argument("--skip-ocr", action="store_true")
