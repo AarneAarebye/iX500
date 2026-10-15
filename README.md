@@ -81,6 +81,22 @@ From here on, replace bare `pip`/`pytest`/`scanix500` with
 `source .venv/bin/activate` once per terminal session to use the bare
 commands for that session.
 
+## Install as an app on this Mac
+
+To run scanix500 from an installed copy rather than this checkout (so
+switching branches here doesn't change the scanner software in use):
+
+    scripts/install-app.sh v0.5.0
+
+It installs that tag into `/Applications/Dossiary/scanix500/` (a new
+`venvs/<version>-<time>` folder, with `venv` pointing at it), points the
+`com.scanix500.menubar` LaunchAgent there (log:
+`~/Library/Logs/scanix500.log`), and links `/opt/homebrew/bin/scanix500` to
+it. It checks the new copy (`scanix500 --version`, `import sane`) before
+switching; if anything fails up to then, the installed copy keeps running
+untouched. Run it again with a newer tag to update. Needs the Homebrew
+packages from "Install" above.
+
 ## Run
 
     .venv/bin/scanix500 ~/Documents/Scans

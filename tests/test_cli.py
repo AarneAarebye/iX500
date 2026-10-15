@@ -224,3 +224,14 @@ def test_cli_snaps_both_sides_after_trimming(tmp_path):
     ):
         main([str(tmp_path), "--skip-ocr", "--skip-blank-filter"])
     assert calls == ["trim", "snap", "trim", "snap"]
+
+
+def test_version_flag_prints_version_without_destination(capsys):
+    import pytest
+    from scanix500 import __version__
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--version"])
+
+    assert exc.value.code == 0
+    assert capsys.readouterr().out.strip() == f"scanix500 {__version__}"
