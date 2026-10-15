@@ -172,3 +172,11 @@ aimed at a human reader.
 - Work through the plan using the `superpowers:subagent-driven-development`
   or `superpowers:executing-plans` skill, task by task, TDD (failing test
   → minimal implementation → passing test → commit) per step.
+- **Releasing**: bump `version` in `pyproject.toml` and `__version__` in
+  `src/scanix500/__init__.py` together (`tests/menubar/test_bridge.py`
+  asserts the version `/health` reports), tag `v<version>`, then install it
+  on this Mac with `scripts/install-app.sh v<version>`. The menu bar app
+  runs from that installed copy in `/Applications/Dossiary/scanix500/`, not
+  from this checkout, so switching branches here doesn't change the scanner
+  software in use (spec: Dossiary's
+  `docs/superpowers/specs/2026-10-15-applications-folder-layout-design.md`).
