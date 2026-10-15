@@ -507,7 +507,7 @@ def test_health_is_version_2_and_keeps_the_service_name(v2_server):
     base, _ = v2_server
     status, body, headers = _request(base, "GET", "/health")
     assert status == 200
-    assert body == {"ok": True, "helper": "scanix500", "version": "0.5.0", "protocol": 2,
+    assert body == {"ok": True, "helper": "scanix500", "version": "0.5.1", "protocol": 2,
                     "paired": True, "service": "scanix500-bridge"}
     assert headers["Content-Type"].startswith("application/json")
 
