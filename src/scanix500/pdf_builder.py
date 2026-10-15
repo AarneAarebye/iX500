@@ -43,10 +43,14 @@ def _save_image_only_pdf(image: Image.Image, path: Path) -> None:
     page.save(path, format="PDF", resolution=dpi)
 
 
-def _merge_pdfs(page_paths: list[Path], output_path: Path) -> None:
+def _merge_pdfs(page_paths: list[Path], output_path: Path, title: str | None = None) -> None:
     writer = PdfWriter()
     for page_path in page_paths:
         writer.append(str(page_path))
+    # A PDF without a title gets the literal "'Untitled'" from ocrmypdf, which
+    # viewers then show (Chrome's tab, Finder's Get Info). ocrmypdf keeps a
+    # title that's there, so the file name goes in from the start.
+    writer.add_metadata({"/Title": title or output_path.stem})
     with open(output_path, "wb") as f:
         writer.write(f)
 
@@ -96,6 +100,7 @@ def ocr_pdf(input_path: Path, output_path: Path, languages: list[str]) -> None:
         logger.warning("OCR of %s failed as a whole; trying page by page", input_path)
     try:
         reader = PdfReader(str(input_path))
+        title = (reader.metadata.title if reader.metadata else None) or input_path.stem
     except Exception as e:  # noqa: BLE001
         raise OcrFailed(f"The scan's PDF couldn't be read: {e}") from e
     any_done = False
@@ -119,7 +124,7 @@ def ocr_pdf(input_path: Path, output_path: Path, languages: list[str]) -> None:
             any_done = True
         if not any_done:
             raise OcrFailed("No page could be made searchable — is the OCR language installed?")
-        _merge_pdfs(page_paths, output_path)
+        _merge_pdfs(page_paths, output_path, title)
 
 
 _installed_languages: list[str] | None = None
