@@ -26,8 +26,9 @@ and every computer with Dossiary Scan Helper scans with it.
    apt installs everything it needs (SANE, ocrmypdf, Tesseract with German
    and English) and starts the service. It prints the certificate
    fingerprint.
-4. Check it: `scanix500-server status` shows the scanner, the port (8767)
-   and the fingerprint.
+4. Check it: `sudo scanix500-server status` shows the scanner, the port
+   (8767), the fingerprint and how many computers are paired (without
+   sudo it can't read the fingerprint and pairings, and says so).
 
 ## Pair a computer
 
