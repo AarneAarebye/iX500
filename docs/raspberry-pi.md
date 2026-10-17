@@ -38,6 +38,49 @@ the scanner, run `sudo scanix500-server pair` on the Pi and type the code
 into the helper; compare the fingerprint the helper shows with the one the
 Pi printed.
 
+## How a scan travels
+
+![Dossiary asks the scan helper on its own computer; the helper forwards the request over HTTPS to scanix500-server on the Pi, which drives the iX500 over USB and returns the PDF, then finishes text recognition in the background.](images/pi-scan-path.svg)
+
+Dossiary never talks to the Pi itself. It asks Dossiary Scan Helper on the
+same computer (`localhost`, as for a scanner plugged into that computer),
+and the helper forwards the request to the Pi. Only that one hop crosses
+the network, over HTTPS with the certificate the helper remembered when
+it paired. *The helper's network-scanner support is coming next; until
+then the server can be tried with `curl`.*
+
+**Once per computer: pairing**
+
+1. The helper finds the Pi on the network (`_dossiary-scan._tcp`, by its
+   host name).
+2. It sends `POST /pair/button` with the computer's name.
+3. You press **Scan** on the iX500 within 2 minutes.
+4. The Pi gives that computer a token; the helper keeps it together with
+   the Pi's certificate fingerprint.
+
+**Every scan**
+
+1. You click 📷 Scan in Dossiary and pick "ScanSnap iX500 (scanner)".
+2. The helper forwards the request to the Pi, asking for text
+   recognition in the background (`ocr: true`).
+3. The Pi scans both sides, drops blank pages, builds the PDF and answers.
+4. The PDF lands in Dossiary's Inbox; the Pi deletes its copy.
+5. The helper asks for the text recognition job (`GET /ocr/<job>`) until
+   it's done; the searchable PDF then replaces the scan in Dossiary, and
+   the original is kept.
+
+**How long it takes**
+
+![Timeline to scale: with background text recognition the PDF arrives after 27 seconds and becomes searchable after about 179 seconds; recognising text before answering takes 332 seconds.](images/pi-scan-timing.svg)
+
+Measured on a Raspberry Pi with 6 two-sided A4 pages in colour at 300 dpi:
+the scan comes back after **27 seconds**, and text recognition takes
+about **2½ minutes** more in the background while you keep working.
+Recognising the text before answering, page by page, made the same scan
+take **332 seconds** before anything arrived, which is why Dossiary asks
+for background text recognition. Text recognition is the slow part, so a
+newer, faster Pi shortens the background step.
+
 ## Day to day
 
 - `scanix500-server clients` lists paired computers;
