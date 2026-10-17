@@ -103,14 +103,33 @@ def cmd_clients(cfg: ServerConfig, revoke: str | None) -> int:
     return 0
 
 
+def _paired_count(cfg: ServerConfig) -> int:
+    # Opened first on purpose: the pairing store treats an unreadable file as
+    # empty, which would show "0" to a user who just may not read it.
+    try:
+        with open(cfg.pairing_path, "rb"):
+            pass
+    except FileNotFoundError:
+        return 0
+    return _store(cfg).paired_count()
+
+
 def cmd_status(cfg: ServerConfig) -> int:
     print(f"scanix500-server {__version__}")
     print(f"Name: {cfg.name}")
     print(f"Port: {cfg.port}")
-    print(_fingerprint_line(cfg) if cfg.cert_path.exists() else "Certificate: missing (run: sudo scanix500-server init)")
+    # The state folder is readable only by the service's user and root (it
+    # holds scans and pairings), so without sudo some lines can't be shown.
+    try:
+        print(_fingerprint_line(cfg) if cfg.cert_path.exists() else "Certificate: missing (run: sudo scanix500-server init)")
+    except PermissionError:
+        print("Fingerprint: (run with sudo to see it)")
     device = resolve_device_name()
     print(f"Scanner: {device}" if device else "Scanner: not found")
-    print(f"Paired computers: {_store(cfg).paired_count()}")
+    try:
+        print(f"Paired computers: {_paired_count(cfg)}")
+    except PermissionError:
+        print("Paired computers: (run with sudo to see them)")
     return 0
 
 

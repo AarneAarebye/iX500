@@ -59,3 +59,18 @@ def test_avahi_service_uses_the_configured_port_and_name(tmp_path, monkeypatch, 
     xml = capsys.readouterr().out
     assert "<type>_dossiary-scan._tcp</type>" in xml and "<port>9443</port>" in xml
     assert "Hallway &amp; co" in xml and "<txt-record>proto=2</txt-record>" in xml
+
+
+def test_status_without_permission_to_read_the_state(state, capsys, monkeypatch):
+    monkeypatch.setattr("scanix500.server.cli.resolve_device_name", lambda: "fujitsu:ScanSnap iX500:1")
+    main(["init"]); capsys.readouterr()
+    (state / "paired_clients.json").write_text("{}")
+    def denied(*args, **kwargs):
+        raise PermissionError(13, "Permission denied")
+    # What a normal user meets on the Pi: /var/lib/scanix500 is 0750 scanix500.
+    monkeypatch.setattr("scanix500.server.cli._fingerprint_line", denied)
+    monkeypatch.setattr("scanix500.server.cli._paired_count", denied)
+    assert main(["status"]) == 0
+    out = capsys.readouterr().out
+    assert "Fingerprint: (run with sudo" in out and "Paired computers: (run with sudo" in out
+    assert "Scanner: fujitsu:ScanSnap iX500:1" in out
