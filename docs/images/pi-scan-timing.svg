@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 190" font-family="'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif" role="img" aria-label="Timeline to scale: with background OCR the PDF reaches Dossiary after 27 seconds and becomes searchable after about 179 seconds; recognising text first takes 332 seconds before anything arrives.">
+  <rect x="0" y="0" width="960" height="190" rx="12" fill="#ffffff"/>
+          <!-- scale: x = 230 + t * 2.1 (seconds) -->
+          <g font-size="11" text-anchor="middle" style="font-family:'IBM Plex Mono', ui-monospace, Menlo, monospace;fill:#5d6a64">
+            <line x1="230" y1="150" x2="944" y2="150" style="stroke:#c9d1cc"/>
+            <line x1="230" y1="146" x2="230" y2="154" style="stroke:#5d6a64"/><text x="230" y="170">0 s</text>
+            <line x1="356" y1="146" x2="356" y2="154" style="stroke:#5d6a64"/><text x="356" y="170">60</text>
+            <line x1="482" y1="146" x2="482" y2="154" style="stroke:#5d6a64"/><text x="482" y="170">120</text>
+            <line x1="608" y1="146" x2="608" y2="154" style="stroke:#5d6a64"/><text x="608" y="170">180</text>
+            <line x1="734" y1="146" x2="734" y2="154" style="stroke:#5d6a64"/><text x="734" y="170">240</text>
+            <line x1="860" y1="146" x2="860" y2="154" style="stroke:#5d6a64"/><text x="860" y="170">300</text>
+          </g>
+
+          <text x="10" y="40" font-size="13" font-weight="500" fill="#1d2421">Background OCR</text>
+          <text x="10" y="56" font-size="11" style="fill:#5d6a64">how Dossiary scans</text>
+          <rect x="230" y="28" width="56.7" height="26" rx="3" style="fill:#157a55"/>
+          <rect x="286.7" y="28" width="319.2" height="26" rx="3" stroke-dasharray="3 3" style="fill:#d5ebe0;stroke:#157a55"/>
+          <text x="258" y="22" text-anchor="middle" font-size="11" style="fill:#157a55;font-family:'IBM Plex Mono', ui-monospace, Menlo, monospace">PDF in Inbox · 27 s</text>
+          <text x="446" y="45" text-anchor="middle" font-size="11" fill="#1d2421">you keep working · OCR on the Pi</text>
+          <text x="612" y="45" font-size="11" fill="#1d2421" style="font-family:'IBM Plex Mono', ui-monospace, Menlo, monospace">searchable · ~179 s</text>
+
+          <text x="10" y="102" font-size="13" font-weight="500" fill="#1d2421">OCR first</text>
+          <text x="10" y="118" font-size="11" style="fill:#5d6a64">page by page, then answer</text>
+          <rect x="230" y="90" width="697.2" height="26" rx="3" opacity="0.35" style="fill:#5d6a64"/>
+          <text x="578" y="107" text-anchor="middle" font-size="11" fill="#1d2421">waiting: scan, then text recognition, then the answer</text>
+          <text x="930" y="84" text-anchor="end" font-size="11" fill="#1d2421" style="font-family:'IBM Plex Mono', ui-monospace, Menlo, monospace">332 s</text>
+        </svg>
