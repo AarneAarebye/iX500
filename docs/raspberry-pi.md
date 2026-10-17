@@ -46,8 +46,8 @@ Dossiary never talks to the Pi itself. It asks Dossiary Scan Helper on the
 same computer (`localhost`, as for a scanner plugged into that computer),
 and the helper forwards the request to the Pi. Only that one hop crosses
 the network, over HTTPS with the certificate the helper remembered when
-it paired. *The helper's network-scanner support is coming next; until
-then the server can be tried with `curl`.*
+it paired. This needs [Dossiary Scan Helper for macOS 0.3.0 or later](https://github.com/AarneAarebye/dossiary-scan-helper/releases)
+(its **Add network scanner…** menu item).
 
 **Once per computer: pairing**
 
