@@ -131,3 +131,81 @@ def test_non_ascii_code_is_just_wrong(store):
     with pytest.raises(PairingError):
         store.pair("１２３４５６")
     assert store.is_valid(store.pair(code))
+
+
+import json as _json
+from datetime import datetime, timedelta, timezone
+
+from scanix500.menubar.pairing import (
+    CODE_ATTEMPTS, SERVER_CODE_LIFETIME_SECONDS, PairingError, PairingStore, SharedWindowPairingStore,
+)
+
+
+def _now_box(start):
+    box = [start]
+    return box, (lambda: box[0])
+
+
+def test_clients_are_named_listed_and_revocable(tmp_path):
+    t0 = datetime(2026, 10, 17, 12, 0, tzinfo=timezone.utc)
+    box, now = _now_box(t0)
+    store = PairingStore(tmp_path / "p.json", now=now)
+    mac = store.pair(store.open_window(), client="Arne's MacBook")
+    store.issue_token("Office iMac")
+    names = [c["name"] for c in store.clients()]
+    assert names == ["Arne's MacBook", "Office iMac"]
+    assert store.clients()[0]["paired_at"] == t0.isoformat() and store.clients()[0]["last_used"] is None
+    box[0] = t0 + timedelta(hours=2)
+    assert store.is_valid(mac)
+    assert store.clients()[0]["last_used"] == (t0 + timedelta(hours=2)).isoformat()
+    reloaded = PairingStore(tmp_path / "p.json", now=now)
+    assert [c["name"] for c in reloaded.clients()] == names
+    assert reloaded.revoke("Arne's MacBook") == 1
+    assert not reloaded.is_valid(mac)
+    assert reloaded.revoke("nobody") == 0
+
+
+def test_tokens_from_before_client_names_still_work(tmp_path):
+    (tmp_path / "p.json").write_text(_json.dumps({"token_hashes": ["ab" * 32]}))
+    store = PairingStore(tmp_path / "p.json")
+    assert store.paired_count() == 1
+    assert store.clients()[0]["name"] == "(paired before names were kept)"
+
+
+def test_shared_window_opened_by_one_process_pairs_in_another(tmp_path):
+    clock = [1000.0]
+    cli = SharedWindowPairingStore(tmp_path / "p.json", tmp_path / "w.json", clock=lambda: clock[0])
+    code = cli.open_window()
+    assert len(code) == 6 and code.isdigit()
+    assert code not in (tmp_path / "w.json").read_text()  # only a hash is stored
+    service = SharedWindowPairingStore(tmp_path / "p.json", tmp_path / "w.json", clock=lambda: clock[0])
+    token = service.pair(code, client="Office iMac")
+    assert service.is_valid(token)
+    assert not (tmp_path / "w.json").exists()
+    with pytest.raises(PairingError, match="scanix500-server pair"):
+        service.pair(code)
+
+
+def test_shared_window_expires_and_closes_after_wrong_codes(tmp_path):
+    clock = [1000.0]
+    store = SharedWindowPairingStore(tmp_path / "p.json", tmp_path / "w.json", clock=lambda: clock[0])
+    store.open_window()
+    clock[0] += SERVER_CODE_LIFETIME_SECONDS + 1
+    with pytest.raises(PairingError, match="scanix500-server pair"):
+        store.pair("000000")
+    code = store.open_window()
+    wrong = "111111" if code != "111111" else "222222"
+    for _ in range(CODE_ATTEMPTS):
+        with pytest.raises(PairingError):
+            store.pair(wrong)
+    with pytest.raises(PairingError, match="scanix500-server pair"):
+        store.pair(code)
+
+
+def test_service_sees_a_revocation_made_by_another_process(tmp_path):
+    service = SharedWindowPairingStore(tmp_path / "p.json", tmp_path / "w.json")
+    token = service.issue_token("Old laptop")
+    assert service.is_valid(token)
+    cli = SharedWindowPairingStore(tmp_path / "p.json", tmp_path / "w.json")
+    assert cli.revoke("Old laptop") == 1
+    assert not service.is_valid(token)
