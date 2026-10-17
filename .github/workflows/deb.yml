@@ -1,0 +1,68 @@
+name: Debian package
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: sh packaging/debian/build-deb.sh
+      - name: Lintian
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq lintian
+          lintian --fail-on error --suppress-tags no-manual-page,extended-description-line-too-long dist/*.deb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          path: dist/*.deb
+
+  install-test:
+    needs: build
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: deb
+      - name: Install
+        run: |
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ./scanix500-server_*_all.deb curl systemd
+      - name: Files, user, unit
+        run: |
+          test -x /usr/bin/scanix500-server && test -x /usr/bin/scanix500
+          getent passwd scanix500
+          test -f /var/lib/scanix500/tls/cert.pem
+          test "$(stat -c %U /var/lib/scanix500/tls/key.pem)" = scanix500
+          grep -q "_dossiary-scan._tcp" /etc/avahi/services/scanix500.service
+          systemd-analyze verify /lib/systemd/system/scanix500-server.service
+          scanix500-server --version
+      - name: Server answers over HTTPS
+        run: |
+          runuser -u scanix500 -- scanix500-server run --fake-scanners &
+          sleep 3
+          curl -sk https://127.0.0.1:8767/health | grep -q '"remote": true'
+      - name: Purge
+        run: |
+          DEBIAN_FRONTEND=noninteractive apt-get purge -y -qq scanix500-server
+          ! getent passwd scanix500
+          test ! -e /var/lib/scanix500
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: install-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: deb
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: scanix500-server_*_all.deb

@@ -106,8 +106,8 @@ the iX500's Scan button, or with `sudo scanix500-server pair`), and lists
 it next to local scanners. It listens over HTTPS on port 8767 and accepts
 no requests from web pages. `scanix500-server status`, `clients` and
 `clients revoke NAME` manage it. Installing it on a Pi as a Debian package
-is described in `docs/raspberry-pi.md` (part 3 of
-`docs/superpowers/specs/2026-10-17-pi-scan-server-design.md`).
+is described in `docs/raspberry-pi.md` -- the package is built by GitHub
+Actions for every `v*` tag and attached to the release.
 
 ## Run
 

@@ -191,3 +191,7 @@ aimed at a human reader.
   from this checkout, so switching branches here doesn't change the scanner
   software in use (spec: Dossiary's
   `docs/superpowers/specs/2026-10-15-applications-folder-layout-design.md`).
+  Pushing the tag also builds `scanix500-server_<version>_all.deb`
+  (`.github/workflows/deb.yml`: lintian, an install test in
+  `debian:trixie`, then attached to the release); the package files live
+  in `packaging/debian/`.
