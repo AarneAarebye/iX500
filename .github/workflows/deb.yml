@@ -24,7 +24,10 @@ jobs:
   install-test:
     needs: build
     runs-on: ubuntu-latest
-    container: debian:trixie
+    strategy:
+      matrix:
+        debian: [bookworm, trixie]  # Raspberry Pi OS is based on one of these
+    container: debian:${{ matrix.debian }}
     steps:
       - uses: actions/download-artifact@v4
         with:
