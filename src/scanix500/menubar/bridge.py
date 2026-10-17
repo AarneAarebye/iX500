@@ -7,9 +7,10 @@ import os
 import re
 import threading
 from collections.abc import Callable
+from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 from urllib.parse import parse_qs, urlsplit
 
 from scanix500 import __version__
@@ -19,6 +20,9 @@ from scanix500.menubar.pairing import PairingError, PairingStore, bearer_token
 from scanix500.menubar.profiles import Profile
 from scanix500.menubar.protocol_v2 import IX500, ProtocolError, error_body, profile_for, response_from_result, validate
 from scanix500.menubar.runner import ScanResult
+
+if TYPE_CHECKING:
+    from scanix500.server.button_pairing import ButtonPairing
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +36,22 @@ NOT_PAIRED_MESSAGE = (
     "This browser isn't paired with scanix500. Choose \u201cPair a Browser\u2026\u201d in the scanix500 menu "
     "and enter the code in Dossiary."
 )
+
+REMOTE_NOT_PAIRED_MESSAGE = (
+    "This computer isn't paired with this scan server. Choose “Add network scanner…” in "
+    "Dossiary Scan Helper and press the Scan button on the iX500."
+)
+
+
+@dataclass(frozen=True)
+class RemoteOptions:
+    """scanix500-server's network mode: no web pages at all (any Origin is
+    refused, no CORS), /health with the certificate fingerprint and server
+    name, and pairing by the scanner's button."""
+    fingerprint: str
+    name: str
+    button_pairing: "ButtonPairing"
+
 
 _ALLOWED_ORIGIN = re.compile(r"http://(localhost|127\.0\.0\.1)(?::([0-9]{1,5}))?")
 
@@ -144,8 +164,9 @@ class V2Backend(Protocol):
 
 class RealBackend:
     def __init__(self, get_destination: Callable[[], str], trigger: ScanTrigger,
-                 ocr_jobs: OcrJobQueue | None | bool = None):
+                 ocr_jobs: OcrJobQueue | None | bool = None, keep_outputs: bool = True):
         self._get_destination = get_destination
+        self._keep_outputs = keep_outputs
         self._trigger = trigger
         # None: a queue is made lazily on first use; False: no background OCR at all.
         self._no_ocr = ocr_jobs is False
@@ -183,9 +204,14 @@ class RealBackend:
                 if path:
                     try:
                         entry["ocrJob"] = self._ocr_jobs.submit(Path(path), entry["name"], entry["pages"],
-                                                                settings["ocrLanguages"], copy_to=path)
+                                                                settings["ocrLanguages"],
+                                                                copy_to=path if self._keep_outputs else None)
                     except Exception:  # noqa: BLE001 - the scan itself succeeded
                         logger.exception("Couldn't queue background OCR for %s", entry["name"])
+        if not self._keep_outputs:
+            # scanix500-server: the files went out in this response; the Pi keeps no copy.
+            for path in result.output_paths:
+                Path(path).unlink(missing_ok=True)
         return status, body
 
     def ocr_job(self, job_id: str) -> tuple[int, dict]:
@@ -199,7 +225,8 @@ class _BodyError(ValueError):
 
 
 def make_handler_class(
-    get_destination: Callable[[], str], trigger: ScanTrigger | None, pairing: PairingStore, backend: V2Backend
+    get_destination: Callable[[], str], trigger: ScanTrigger | None, pairing: PairingStore, backend: V2Backend,
+    remote: RemoteOptions | None = None,
 ) -> type[BaseHTTPRequestHandler]:
     """Builds a BaseHTTPRequestHandler bound to a live destination-folder
     getter (read fresh on every version 1 request -- the "Set Bridge Scan
@@ -211,6 +238,8 @@ def make_handler_class(
         def _cors_headers(self) -> None:
             # Echo an allowed Origin (never "*"); a request without an
             # Origin header gets none. Refused origins never reach here.
+            if remote is not None:
+                return
             origin = self.headers.get("Origin")
             if origin is not None and origin_allowed(origin):
                 self.send_header("Access-Control-Allow-Origin", origin)
@@ -232,10 +261,14 @@ def make_handler_class(
             self._send_json(status, error_body(message), {"Allow": allow} if allow else None)
 
         def _origin_ok(self) -> bool:
-            if origin_allowed(self.headers.get("Origin")):
+            origin = self.headers.get("Origin")
+            allowed = origin is None if remote is not None else origin_allowed(origin)
+            if allowed:
                 return True
             # No CORS headers on this 403 (PROTOCOL.md "Origins").
-            payload = json.dumps(error_body("This origin may not use the scan bridge.")).encode("utf-8")
+            message = ("A network scan server doesn't accept requests from web pages." if remote is not None
+                       else "This origin may not use the scan bridge.")
+            payload = json.dumps(error_body(message)).encode("utf-8")
             self.send_response(403)
             self.send_header("Content-Type", JSON_TYPE)
             self.send_header("Content-Length", str(len(payload)))
@@ -303,6 +336,9 @@ def make_handler_class(
             path, job_id = url.path, ""
             if path.startswith("/ocr/") and len(path) > len("/ocr/") and "/" not in path[len("/ocr/"):]:
                 job_id, path = path[len("/ocr/"):], "/ocr/<job>"
+            if remote is not None and (path == "/pair/button" or path.startswith("/pair/button/")):
+                self._handle_button_pair(path)
+                return
             method = ENDPOINTS.get(path)
             if method is None:
                 self._error(404, "There's nothing at this address.")
@@ -312,8 +348,12 @@ def make_handler_class(
                 return
             token_ok = pairing.is_valid(bearer_token(self.headers.get("Authorization")))
             if url.path == "/health":
-                self._send_json(200, {"ok": True, "helper": "scanix500", "version": __version__, "protocol": 2,
-                                      "paired": token_ok, "service": "scanix500-bridge"})
+                health = {"ok": True, "helper": "scanix500", "version": __version__, "protocol": 2,
+                          "paired": token_ok, "service": "scanix500-bridge"}
+                if remote is not None:
+                    health.update(service="scanix500-server", remote=True, fingerprint=remote.fingerprint,
+                                  name=remote.name)
+                self._send_json(200, health)
                 return
             if url.path == "/pair":
                 self._handle_pair()
@@ -322,7 +362,7 @@ def make_handler_class(
                 self._handle_v1_scan(url.query, token_ok)
                 return
             if not token_ok:
-                self._error(401, NOT_PAIRED_MESSAGE)
+                self._error(401, REMOTE_NOT_PAIRED_MESSAGE if remote is not None else NOT_PAIRED_MESSAGE)
                 return
             if url.path == "/scanners":
                 self._send_json(200, {"scanners": backend.scanners()})
@@ -376,11 +416,46 @@ def make_handler_class(
                 self._error(400, "\"client\" must be text of at most 200 characters.")
                 return
             try:
-                token = pairing.pair(body["code"])
+                token = pairing.pair(body["code"], body.get("client", ""))
             except PairingError as err:
                 self._error(403, str(err))
                 return
             self._send_json(200, {"ok": True, "token": token})
+
+        def _handle_button_pair(self, path: str) -> None:
+            from scanix500.server.button_pairing import PairingRateLimited
+            if path == "/pair/button":
+                if self.command != "POST":
+                    self._error(405, "/pair/button only answers POST.", allow="POST")
+                    return
+                try:
+                    body = self._read_json()
+                except _BodyError:
+                    body = None
+                if not isinstance(body, dict) or not isinstance(body.get("client"), str) or len(body["client"]) > 200:
+                    self._error(400, "The request needs a \"client\" name of at most 200 characters.")
+                    return
+                try:
+                    request_id = remote.button_pairing.request(body["client"])
+                except PairingRateLimited:
+                    self._error(429, "Too many pairing requests. Wait a minute, then try again.")
+                    return
+                self._send_json(202, {"request": request_id})
+                return
+            if self.command != "GET":
+                self._error(405, f"{path} only answers GET.", allow="GET")
+                return
+            state, token = remote.button_pairing.status(path[len("/pair/button/"):])
+            if state == "granted":
+                self._send_json(200, {"ok": True, "token": token})
+            elif state == "pending":
+                self._send_json(202, {"state": "pending"})
+            elif state == "expired":
+                self._error(408, "Nobody pressed the Scan button within 2 minutes. Try again.")
+            elif state == "conflict":
+                self._error(409, "Another computer asked to pair at the same time. Try again, one at a time.")
+            else:
+                self._error(404, "This pairing request is unknown or already finished.")
 
         # Every method goes through _dispatch. Bodies are read per endpoint;
         # an unread body is safe because protocol_version stays the default

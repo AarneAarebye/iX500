@@ -213,7 +213,13 @@ class FakePairing:
         self._tokens: set[str] = set()
         self._lock = threading.Lock()
 
-    def pair(self, code: str) -> str:
+    def issue_token(self, client: str) -> str:
+        token = secrets.token_urlsafe(24)
+        with self._lock:
+            self._tokens.add(token)
+        return token
+
+    def pair(self, code: str, client: str = "") -> str:
         if code != FAKE_PAIRING_CODE:
             raise PairingError("That code isn't right. Choose “Pair a browser…” in the helper and enter the new code.")
         token = secrets.token_urlsafe(24)

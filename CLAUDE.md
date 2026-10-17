@@ -153,6 +153,17 @@ TDD steps.
   only so `scripts/run-conformance.sh` can run dossiary-scan-helper's
   conformance suite (51 tests) against the bridge.
 
+- **`scanix500.server` is the headless network server** (spec
+  `docs/superpowers/specs/2026-10-17-pi-scan-server-design.md`). It reuses
+  `bridge.py`'s handler in *remote mode* (`RemoteOptions`: any `Origin`
+  header refused, no CORS, `/health` with `fingerprint`/`name`,
+  `/pair/button`), `SharedWindowPairingStore` (a code window in a file so
+  `scanix500-server pair` can open it for the running service; tokens named
+  and revocable), `ServerScanTrigger` (one scan at a time) and
+  `ButtonWatcher` (polls the button only while a button-pairing request
+  waits). Nothing under `scanix500.server` may import rumps/AppKit --
+  `tests/server/test_runtime.py` checks it.
+
 ## Project phasing
 
 All four phases are complete and in this repo: Phase 1 (the `scanix500`
