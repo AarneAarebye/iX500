@@ -1,9 +1,8 @@
 #!/bin/sh
 set -e
 
-if [ -d /run/systemd/system ] && [ "$1" = "remove" ]; then
-    systemctl stop scanix500-server.service || true
-    systemctl disable scanix500-server.service >/dev/null 2>&1 || true
+if [ "$1" = "remove" ]; then
+    deb-systemd-invoke stop scanix500-server.service >/dev/null || true
 fi
 
 exit 0
