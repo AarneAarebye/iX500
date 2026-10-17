@@ -1,0 +1,21 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    remove)
+        rm -f /etc/avahi/services/scanix500.service
+        ;;
+    purge)
+        rm -f /etc/avahi/services/scanix500.service
+        rm -rf /var/lib/scanix500 /etc/scanix500
+        if getent passwd scanix500 >/dev/null; then
+            deluser --system scanix500 >/dev/null || true
+        fi
+        ;;
+esac
+
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload || true
+fi
+
+exit 0

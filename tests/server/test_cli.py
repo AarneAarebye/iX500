@@ -48,3 +48,14 @@ def test_status(state, capsys, monkeypatch):
     assert main(["status"]) == 0
     out = capsys.readouterr().out
     assert "Port: 8767" in out and "Scanner: not found" in out and "Paired computers: 0" in out
+
+
+def test_avahi_service_uses_the_configured_port_and_name(tmp_path, monkeypatch, capsys):
+    conf = tmp_path / "s.conf"
+    conf.write_text("[server]\nport = 9443\nname = Hallway & co\n")
+    monkeypatch.setenv("SCANIX500_CONFIG", str(conf))
+    monkeypatch.setenv("SCANIX500_STATE_DIR", str(tmp_path / "state"))
+    assert main(["avahi-service"]) == 0
+    xml = capsys.readouterr().out
+    assert "<type>_dossiary-scan._tcp</type>" in xml and "<port>9443</port>" in xml
+    assert "Hallway &amp; co" in xml and "<txt-record>proto=2</txt-record>" in xml
