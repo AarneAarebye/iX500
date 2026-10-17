@@ -86,7 +86,7 @@ commands for that session.
 To run scanix500 from an installed copy rather than this checkout (so
 switching branches here doesn't change the scanner software in use):
 
-    scripts/install-app.sh v0.5.1
+    scripts/install-app.sh v0.6.0
 
 It installs that tag into `/Applications/Dossiary/scanix500/` (a new
 `venvs/<version>-<time>` folder, with `venv` pointing at it), points the
