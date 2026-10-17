@@ -97,6 +97,18 @@ switching; if anything fails up to then, the installed copy keeps running
 untouched. Run it again with a newer tag to update. Needs the Homebrew
 packages from "Install" above.
 
+## Network scan server (Raspberry Pi)
+
+`scanix500-server` runs the same scanning as the menu bar app without a
+screen, so an iX500 on a Raspberry Pi can be shared over the network:
+Dossiary Scan Helper on each computer finds it, pairs once (by pressing
+the iX500's Scan button, or with `sudo scanix500-server pair`), and lists
+it next to local scanners. It listens over HTTPS on port 8767 and accepts
+no requests from web pages. `scanix500-server status`, `clients` and
+`clients revoke NAME` manage it. Installing it on a Pi as a Debian package
+is described in `docs/raspberry-pi.md` (part 3 of
+`docs/superpowers/specs/2026-10-17-pi-scan-server-design.md`).
+
 ## Run
 
     .venv/bin/scanix500 ~/Documents/Scans
