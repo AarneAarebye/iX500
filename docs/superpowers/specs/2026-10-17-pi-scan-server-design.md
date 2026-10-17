@@ -62,10 +62,12 @@ Built in that order; each part has its own implementation plan.
   `/health` adds `remote: true` and `fingerprint` (SHA-256 of the
   certificate, shown as 8 groups of 4 hex digits).
 - State under `/var/lib/scanix500/` (pairings, OCR jobs, TLS), settings in
-  `/etc/scanix500/server.conf`: port, the name announced on the network
-  (default: the Pi's hostname), OCR languages (default `deu+eng`).
+  `/etc/scanix500/server.conf`: port and the name announced on the network
+  (default: the Pi's hostname). OCR languages come with each scan request,
+  as today.
 - Scans are returned in the response and deleted on the Pi; background OCR
-  results wait for their client and expire after 24 hours, as today.
+  results wait for their client with the OCR job queue's existing
+  retention.
 
 ## 2. Pairing and security
 
@@ -85,7 +87,9 @@ Built in that order; each part has its own implementation plan.
   (over SSH) prints a 6-digit code valid for 5 minutes plus the fingerprint;
   the helper's existing `POST /pair {code, client}` flow takes the code and
   shows the fingerprint to compare.
-- Pairing attempts are rate-limited (5 failures → 1-minute lockout).
+- Pairing attempts are limited: a code window closes after 5 wrong codes
+  (a new one needs `scanix500-server pair` again), and button-pairing
+  requests are limited to 10 a minute (429).
 - Tokens are stored hashed with the client name and last use;
   `clients revoke` removes one. The helper keeps its token and pinned
   fingerprint in the macOS Keychain.
