@@ -8,6 +8,8 @@ case "$1" in
     purge)
         rm -f /etc/avahi/services/scanix500.service
         rm -rf /var/lib/scanix500 /etc/scanix500
+        deb-systemd-helper purge scanix500-server.service >/dev/null || true
+        deb-systemd-helper unmask scanix500-server.service >/dev/null || true
         if getent passwd scanix500 >/dev/null; then
             deluser --system scanix500 >/dev/null || true
         fi
@@ -15,7 +17,7 @@ case "$1" in
 esac
 
 if [ -d /run/systemd/system ]; then
-    systemctl daemon-reload || true
+    systemctl --system daemon-reload >/dev/null || true
 fi
 
 exit 0

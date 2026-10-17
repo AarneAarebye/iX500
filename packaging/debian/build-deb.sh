@@ -20,7 +20,7 @@ install -m 0644 "$HERE/scanix500-server.service" "$STAGE/lib/systemd/system/"
 install -m 0644 "$HERE/server.conf" "$STAGE/etc/scanix500/server.conf"
 install -m 0644 "$HERE/copyright" "$STAGE/usr/share/doc/scanix500-server/copyright"
 printf 'scanix500-server (%s) unstable; urgency=medium\n\n  * Release notes: https://github.com/AarneAarebye/iX500/releases\n\n -- Aarne Aarebye <25765996+AarneAarebye@users.noreply.github.com>  %s\n' \
-    "$VERSION" "$(LC_ALL=C date -R)" | gzip -9n > "$STAGE/usr/share/doc/scanix500-server/changelog.Debian.gz"
+    "$VERSION" "$(LC_ALL=C date -R)" | gzip -9n > "$STAGE/usr/share/doc/scanix500-server/changelog.gz"
 for script in postinst prerm postrm; do install -m 0755 "$HERE/$script" "$STAGE/DEBIAN/$script"; done
 install -m 0644 "$HERE/conffiles" "$STAGE/DEBIAN/conffiles"
 SIZE=$(du -sk "$STAGE" | cut -f1)
