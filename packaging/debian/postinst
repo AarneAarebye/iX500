@@ -1,0 +1,37 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "configure" ]; then
+    if ! getent passwd scanix500 >/dev/null; then
+        adduser --system --group --home /var/lib/scanix500 --no-create-home scanix500
+    fi
+    if getent group scanner >/dev/null; then
+        adduser scanix500 scanner >/dev/null
+    fi
+    install -d -o scanix500 -g scanix500 -m 0750 /var/lib/scanix500
+    if [ ! -f /var/lib/scanix500/tls/cert.pem ]; then
+        runuser -u scanix500 -- /usr/bin/scanix500-server init >/dev/null
+    fi
+    install -d /etc/avahi/services
+    /usr/bin/scanix500-server avahi-service > /etc/avahi/services/scanix500.service
+
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload
+        systemctl enable scanix500-server.service >/dev/null 2>&1 || true
+        if [ -n "$2" ]; then
+            systemctl restart scanix500-server.service || true
+        else
+            systemctl start scanix500-server.service || true
+        fi
+    fi
+
+    FINGERPRINT=$(runuser -u scanix500 -- /usr/bin/scanix500-server status | sed -n 's/^Fingerprint: //p')
+    echo ""
+    echo "scanix500-server is installed."
+    echo "  Certificate fingerprint: ${FINGERPRINT}"
+    echo "  Pair a computer: choose \"Add network scanner...\" in Dossiary Scan Helper and"
+    echo "  press the Scan button on the iX500 - or run: sudo scanix500-server pair"
+    echo ""
+fi
+
+exit 0

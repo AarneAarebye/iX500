@@ -1,0 +1,19 @@
+[Unit]
+Description=scanix500 network scan server (ScanSnap iX500)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/scanix500-server run
+User=scanix500
+SupplementaryGroups=scanner
+StateDirectory=scanix500
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

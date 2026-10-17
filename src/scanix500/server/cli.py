@@ -5,6 +5,7 @@
   pair                  print a 6-digit pairing code, valid 5 minutes
   clients               list paired computers; `clients revoke NAME` removes one
   status                version, port, fingerprint, scanner, paired computers
+  avahi-service         print the mDNS announcement (the package writes it)
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import logging
 import signal
 import sys
 import threading
+from xml.sax.saxutils import escape
 
 from scanix500 import __version__
 from scanix500.menubar.bridge import RealBackend, RemoteOptions
@@ -112,6 +114,21 @@ def cmd_status(cfg: ServerConfig) -> int:
     return 0
 
 
+def cmd_avahi_service(cfg: ServerConfig) -> int:
+    print(f"""<?xml version="1.0" standalone="no"?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<!-- Written by scanix500-server's package from /etc/scanix500/server.conf. -->
+<service-group>
+  <name>{escape(cfg.name)}</name>
+  <service>
+    <type>_dossiary-scan._tcp</type>
+    <port>{cfg.port}</port>
+    <txt-record>proto=2</txt-record>
+  </service>
+</service-group>""")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="scanix500-server", description="The iX500 as a network scanner.")
     parser.add_argument("--version", action="version", version=f"scanix500-server {__version__}")
@@ -125,6 +142,7 @@ def main(argv: list[str] | None = None) -> int:
     revoke = clients_sub.add_parser("revoke", help="remove a paired computer")
     revoke.add_argument("name")
     sub.add_parser("status", help="show the server's state")
+    sub.add_parser("avahi-service", help="print the Avahi service file (the package writes it)")
     args = parser.parse_args(argv)
     try:
         cfg = load_config()
@@ -135,6 +153,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_init(cfg)
     if args.command == "run":
         return cmd_run(cfg, args.fake_scanners)
+    if args.command == "avahi-service":
+        return cmd_avahi_service(cfg)
     if args.command == "pair":
         return cmd_pair(cfg)
     if args.command == "clients":

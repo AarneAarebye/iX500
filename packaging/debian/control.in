@@ -1,0 +1,16 @@
+Package: scanix500-server
+Version: @VERSION@
+Architecture: all
+Maintainer: Aarne Aarebye <25765996+AarneAarebye@users.noreply.github.com>
+Installed-Size: @SIZE@
+Depends: python3 (>= 3.11), python3-sane, python3-pil, python3-pypdf (>= 4), sane-utils, ocrmypdf, tesseract-ocr, tesseract-ocr-deu, tesseract-ocr-eng, avahi-daemon, openssl, adduser
+Suggests: tesseract-ocr-all
+Section: graphics
+Priority: optional
+Homepage: https://github.com/AarneAarebye/iX500
+Description: ScanSnap iX500 as a network scanner for Dossiary
+ Runs the scanix500 scan pipeline (duplex capture through SANE, blank page
+ handling, splitting, ocrmypdf) as a service on a Raspberry Pi, so every
+ computer with Dossiary Scan Helper can scan with the iX500 over the local
+ network. HTTPS only; computers pair once by pressing the scanner's Scan
+ button or with a code from "scanix500-server pair".
