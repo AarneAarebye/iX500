@@ -7,8 +7,8 @@ and every computer with Dossiary Scan Helper scans with it.
 
 - A Raspberry Pi 4 (2 GB or more) or Pi 5. A Pi 3 works, but turning
   scans into searchable PDFs is slow; a Zero 2 W is too small.
-- Raspberry Pi OS **Lite, 64-bit, based on Debian 13 ("trixie")**. The
-  older Debian 12 version is too old for scanix500.
+- Raspberry Pi OS **Lite**, based on Debian 12 ("bookworm") or Debian 13
+  ("trixie"), 64-bit recommended.
 - The iX500 and its USB cable.
 
 ## Install

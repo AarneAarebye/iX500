@@ -116,17 +116,18 @@ Built in that order; each part has its own implementation plan.
 
 ## 4. Debian package
 
-**Target**: Raspberry Pi OS based on Debian 13 ("trixie"), 64-bit or
-32-bit. Debian 12 ships pypdf 3.4, older than scanix500's pypdf >= 4.0
-requirement, and isn't supported. Recommended hardware: Raspberry Pi 4
-(2 GB or more) or Pi 5; a Pi 3 works but OCR is slow; a Zero 2 W (512 MB)
-is too small for ocrmypdf.
+**Target**: Raspberry Pi OS based on Debian 12 ("bookworm") or Debian 13
+("trixie"), 64-bit or 32-bit. (First written as Debian 13 only, because
+scanix500 required pypdf >= 4; its code turned out to work with Debian 12's
+pypdf 3.4.1, so the requirement is now >= 3.4.) Recommended hardware:
+Raspberry Pi 4 (2 GB or more) or Pi 5; a Pi 3 works but OCR is slow; a
+Zero 2 W (512 MB) is too small for ocrmypdf.
 
 **Package** `scanix500-server_<version>_all.deb` (pure Python, one package
 for every Pi):
 
 - **Depends**: `python3 (>= 3.11)`, `python3-sane`, `python3-pil`,
-  `python3-pypdf (>= 4)`, `sane-utils`, `ocrmypdf`, `tesseract-ocr`,
+  `python3-pypdf (>= 3.4)`, `sane-utils`, `ocrmypdf`, `tesseract-ocr`,
   `tesseract-ocr-deu`, `tesseract-ocr-eng`, `avahi-daemon`, `openssl`.
   **Suggests**: the other `tesseract-ocr-*` languages. All from Raspberry Pi
   OS's own repositories, so no virtualenv and no compiling on the Pi.

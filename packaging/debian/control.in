@@ -3,7 +3,7 @@ Version: @VERSION@
 Architecture: all
 Maintainer: Aarne Aarebye <25765996+AarneAarebye@users.noreply.github.com>
 Installed-Size: @SIZE@
-Depends: python3 (>= 3.11), python3-sane, python3-pil, python3-pypdf (>= 4), sane-utils, ocrmypdf, tesseract-ocr, tesseract-ocr-deu, tesseract-ocr-eng, avahi-daemon, openssl, adduser
+Depends: python3 (>= 3.11), python3-sane, python3-pil, python3-pypdf (>= 3.4), sane-utils, ocrmypdf, tesseract-ocr, tesseract-ocr-deu, tesseract-ocr-eng, avahi-daemon, openssl, adduser
 Suggests: tesseract-ocr-all
 Section: graphics
 Priority: optional
