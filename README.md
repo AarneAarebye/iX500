@@ -109,6 +109,8 @@ no requests from web pages. `scanix500-server status`, `clients` and
 is described in `docs/raspberry-pi.md` -- the package is built by GitHub
 Actions for every `v*` tag and attached to the release.
 
+![Dossiary talks to the scan helper on localhost; only the helper's hop to scanix500-server on the Raspberry Pi crosses the network, over HTTPS with a pinned certificate. A measured 6-page duplex scan reaches Dossiary's Inbox after 27 s and is searchable after about 179 s, against 332 s if the Pi recognised the text first.](docs/images/pi-scan-path.svg)
+
 ## Run
 
     .venv/bin/scanix500 ~/Documents/Scans
