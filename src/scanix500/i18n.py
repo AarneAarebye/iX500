@@ -22,7 +22,10 @@ _strings: dict[str, dict[str, str]] | None = None
 def _match(tag: str) -> str | None:
     parts = tag.replace("_", "-").lower().split("-")
     if parts[0] == "zh":
-        return "zh-Hant" if "hant" in parts[1:] or _HANT_REGIONS & set(parts[1:]) else "zh-Hans"
+        rest = set(parts[1:])
+        if "hans" in rest:
+            return "zh-Hans"
+        return "zh-Hant" if "hant" in rest or _HANT_REGIONS & rest else "zh-Hans"
     return parts[0] if parts[0] in _SIMPLE else None
 
 
@@ -94,7 +97,13 @@ def t(key: str, **kwargs) -> str:
     """The text for key in the current language (the English key when there is no translation),
     with kwargs filled in. Without kwargs the text is returned as it is."""
     global _strings
-    if _strings is None:
-        _strings = load_strings()
-    text = key if _language == "en" else _strings.get(key, {}).get(_language, key)
+    if _language == "en":
+        text = key
+    else:
+        if _strings is None:
+            try:
+                _strings = load_strings()
+            except Exception:
+                _strings = {}
+        text = _strings.get(key, {}).get(_language, key)
     return text.format(**kwargs) if kwargs else text

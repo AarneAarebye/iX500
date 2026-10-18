@@ -266,6 +266,7 @@ class ScanixMenuBarApp(rumps.App):
         rumps.alert(
             title=t("Pair a Browser"),
             message=t("Enter this code in Dossiary:\n\n{code}\n\nIt's valid for 2 minutes.", code=f"{code[:3]} {code[3:]}"),
+            ok=t("OK"),
         )
 
     def _forget_paired_browsers(self, _sender):
@@ -297,7 +298,7 @@ class ScanixMenuBarApp(rumps.App):
         try:
             self.profiles = add_profile(self.profiles, profile)
         except ValueError as e:
-            rumps.alert(t("Add Profile"), str(e))
+            rumps.alert(t("Add Profile"), str(e), ok=t("OK"))
             return
         save_profiles(self.profiles_path, self.profiles)
         self._rebuild_menu()
@@ -313,7 +314,7 @@ class ScanixMenuBarApp(rumps.App):
             try:
                 self.profiles = replace_profile(self.profiles, name, updated)
             except ValueError as e:
-                rumps.alert(t("Edit Profile"), str(e))
+                rumps.alert(t("Edit Profile"), str(e), ok=t("OK"))
                 return
             save_profiles(self.profiles_path, self.profiles)
             self._rebuild_menu()
@@ -329,7 +330,7 @@ class ScanixMenuBarApp(rumps.App):
             try:
                 self.profiles = delete_profile(self.profiles, name)
             except ValueError as e:
-                rumps.alert(t("Delete Profile"), str(e))
+                rumps.alert(t("Delete Profile"), str(e), ok=t("OK"))
                 return
             save_profiles(self.profiles_path, self.profiles)
             self._rebuild_menu()

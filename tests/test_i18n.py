@@ -18,6 +18,8 @@ from scanix500 import i18n
     (["zh_HK"], "zh-Hant"),
     (["it-IT", "de-CH"], "de"),
     (["it-IT"], "en"),
+    (["zh-Hans-HK"], "zh-Hans"),
+    (["zh-Hans-TW"], "zh-Hans"),
     ([], "en"),
 ])
 def test_language_from_tags(tags, expected):
@@ -122,3 +124,15 @@ def test_a_translation_is_used():
     assert i18n.t("Delete profile “{name}”?", name="Work") == "Profil „Work“ löschen?"
     i18n.set_language("hy")
     assert i18n.t("Scanner: not found") == "Սկաներ՝ չի գտնվել"
+
+
+def test_t_survives_unreadable_catalog(monkeypatch):
+    def boom():
+        raise OSError("unreadable")
+    monkeypatch.setattr(i18n, "load_strings", boom)
+    monkeypatch.setattr(i18n, "_strings", None)
+    i18n.set_language("de")
+    try:
+        assert i18n.t("Cancel") == "Cancel"
+    finally:
+        i18n.set_language("en")

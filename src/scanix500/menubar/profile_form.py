@@ -19,7 +19,7 @@ from Foundation import NSNotificationCenter, NSObject, NSURL
 from scanix500.i18n import t
 from scanix500.menubar.profiles import Profile
 
-WINDOW_WIDTH = 420
+WINDOW_WIDTH = 440
 WINDOW_HEIGHT = 220
 
 
@@ -68,22 +68,22 @@ class _ProfileFormDelegate(NSObject):
         content = window.contentView()
 
         name_label = NSTextField.labelWithString_(t("Name:"))
-        name_label.setFrame_(NSMakeRect(20, 176, 80, 20))
+        name_label.setFrame_(NSMakeRect(20, 176, 116, 20))
         content.addSubview_(name_label)
 
-        self.name_field = NSTextField.alloc().initWithFrame_(NSMakeRect(100, 174, 300, 24))
+        self.name_field = NSTextField.alloc().initWithFrame_(NSMakeRect(144, 174, 276, 24))
         content.addSubview_(self.name_field)
 
         dest_label = NSTextField.labelWithString_(t("Destination:"))
-        dest_label.setFrame_(NSMakeRect(20, 140, 80, 20))
+        dest_label.setFrame_(NSMakeRect(20, 140, 116, 20))
         content.addSubview_(dest_label)
 
-        self.destination_field = NSTextField.alloc().initWithFrame_(NSMakeRect(100, 138, 220, 24))
+        self.destination_field = NSTextField.alloc().initWithFrame_(NSMakeRect(144, 138, 168, 24))
         self.destination_field.setEditable_(False)
         self.destination_field.setSelectable_(False)
         content.addSubview_(self.destination_field)
 
-        choose_button = NSButton.alloc().initWithFrame_(NSMakeRect(330, 136, 70, 28))
+        choose_button = NSButton.alloc().initWithFrame_(NSMakeRect(320, 136, 100, 28))
         choose_button.setTitle_(t("Choose…"))
         choose_button.setTarget_(self)
         choose_button.setAction_("chooseClicked:")
@@ -93,13 +93,13 @@ class _ProfileFormDelegate(NSObject):
         self.ocr_checkbox = self._make_checkbox(t("Use OCR"), 74)
         self.split_checkbox = self._make_checkbox(t("Split on blank separator sheets"), 48)
 
-        cancel_button = NSButton.alloc().initWithFrame_(NSMakeRect(220, 12, 90, 32))
+        cancel_button = NSButton.alloc().initWithFrame_(NSMakeRect(212, 12, 100, 32))
         cancel_button.setTitle_(t("Cancel"))
         cancel_button.setTarget_(self)
         cancel_button.setAction_("cancelClicked:")
         content.addSubview_(cancel_button)
 
-        self.ok_button = NSButton.alloc().initWithFrame_(NSMakeRect(316, 12, 90, 32))
+        self.ok_button = NSButton.alloc().initWithFrame_(NSMakeRect(320, 12, 100, 32))
         self.ok_button.setTitle_(t("OK"))
         self.ok_button.setTarget_(self)
         self.ok_button.setAction_("okClicked:")
@@ -111,7 +111,7 @@ class _ProfileFormDelegate(NSObject):
         self._update_ok_enabled()
 
     def _make_checkbox(self, title: str, y: int) -> NSButton:
-        checkbox = NSButton.alloc().initWithFrame_(NSMakeRect(20, y, 380, 24))
+        checkbox = NSButton.alloc().initWithFrame_(NSMakeRect(20, y, 400, 24))
         checkbox.setButtonType_(NSButtonTypeSwitch)
         checkbox.setTitle_(title)
         self.window.contentView().addSubview_(checkbox)
