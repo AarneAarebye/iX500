@@ -86,7 +86,7 @@ commands for that session.
 To run scanix500 from an installed copy rather than this checkout (so
 switching branches here doesn't change the scanner software in use):
 
-    scripts/install-app.sh v0.6.2
+    scripts/install-app.sh v0.7.0
 
 It installs that tag into `/Applications/Dossiary/scanix500/` (a new
 `venvs/<version>-<time>` folder, with `venv` pointing at it), points the
@@ -110,6 +110,17 @@ is described in `docs/raspberry-pi.md` -- the package is built by GitHub
 Actions for every `v*` tag and attached to the release.
 
 ![Dossiary talks to the scan helper on localhost; only the helper's hop to scanix500-server on the Raspberry Pi crosses the network, over HTTPS with a pinned certificate. A measured 6-page duplex scan reaches Dossiary's Inbox after 27 s and is searchable after about 179 s, against 332 s if the Pi recognised the text first.](docs/images/pi-scan-path.svg)
+
+## Languages
+
+The menu bar app (menu, alerts, the profile form, notifications) and `scanix500-server`'s output are
+in English, German, Spanish, French, Chinese (Simplified and Traditional) and Armenian. The menu bar
+app follows macOS's preferred languages (System Settings › General › Language & Region); the server
+follows the locale (`LANG`, e.g. `de_DE.UTF-8`). `SCANIX500_LANG=hy` (or `de`, `es`, `fr`, `zh-Hans`,
+`zh-Hant`, `en`) overrides both. Translations live in `src/scanix500/strings.json`, keyed by the
+English text; `tests/test_i18n.py` fails on a missing translation, a changed `{field}`, or a key the
+code doesn't use. What scanix500 sends to Dossiary, the `scanix500` command's own output and the logs
+stay English.
 
 ## Run
 

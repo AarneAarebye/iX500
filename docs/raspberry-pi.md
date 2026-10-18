@@ -29,6 +29,7 @@ and every computer with Dossiary Scan Helper scans with it.
 4. Check it: `sudo scanix500-server status` shows the scanner, the port
    (8767), the fingerprint and how many computers are paired (without
    sudo it can't read the fingerprint and pairings, and says so).
+   The commands answer in your locale's language (German, Spanish, French, Chinese or Armenian when `LANG` is set to one of them); `SCANIX500_LANG=en` forces English.
 
 ## Pair a computer
 
