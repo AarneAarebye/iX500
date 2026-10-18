@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from scanix500 import i18n
@@ -98,3 +100,25 @@ def test_every_key_in_the_code_is_in_the_catalog_and_back():
 
 def test_the_catalog_has_the_expected_size():
     assert len(catalog()) == 55
+
+
+FIELD = re.compile(r"\{[^{}]*\}")
+
+
+def test_every_language_is_complete_with_the_same_fields():
+    problems = []
+    for key, translations in catalog().items():
+        for lang in i18n.LANGS[1:]:
+            value = translations.get(lang)
+            if not value:
+                problems.append(f"{key!r}: {lang} missing")
+            elif sorted(FIELD.findall(value)) != sorted(FIELD.findall(key)):
+                problems.append(f"{key!r}: {lang} fields {FIELD.findall(value)}")
+    assert problems == []
+
+
+def test_a_translation_is_used():
+    i18n.set_language("de")
+    assert i18n.t("Delete profile “{name}”?", name="Work") == "Profil „Work“ löschen?"
+    i18n.set_language("hy")
+    assert i18n.t("Scanner: not found") == "Սկաներ՝ չի գտնվել"

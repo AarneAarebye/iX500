@@ -1,57 +1,442 @@
 {
-  "Add Profile…": {},
-  "Edit Profile…": {},
-  "Delete Profile…": {},
-  "Set Bridge Scan Folder…": {},
-  "Pair a Browser…": {},
-  "Forget Paired Browsers…": {},
-  "Quit": {},
-  "Background OCR unavailable": {},
-  "Scan bridge unavailable": {},
-  "Pair a Browser": {},
-  "Enter this code in Dossiary:\n\n{code}\n\nIt's valid for 2 minutes.": {},
-  "Forget Paired Browsers": {},
-  "Forget all paired browsers ({count})? Dossiary will ask for a new pairing code before its next scan.": {},
-  "Forget": {},
-  "Cancel": {},
-  "Add Profile": {},
-  "Edit Profile": {},
-  "Delete Profile": {},
-  "Delete profile “{name}”?": {},
-  "Delete": {},
-  "A profile named {name!r} already exists": {},
-  "No profile named {name!r}": {},
-  "Cannot delete the last remaining profile": {},
-  "Profile": {},
-  "Name:": {},
-  "Destination:": {},
-  "Choose…": {},
-  "Use blank-page filter": {},
-  "Use OCR": {},
-  "Split on blank separator sheets": {},
-  "OK": {},
-  "Scan complete": {},
-  "Scan partially completed": {},
-  "Scan failed": {},
-  "No pages scanned.": {},
-  "All pages were blank; no PDF written.": {},
-  "Created the server's certificate.": {},
-  "The server's certificate already exists.": {},
-  "Fingerprint: {fingerprint}": {},
-  "No certificate in {folder}. Create one with: sudo scanix500-server init": {},
-  "Pairing code: {code}  (valid {minutes} minutes)": {},
-  "Check that Dossiary Scan Helper shows the same fingerprint before you enter the code.": {},
-  "Removed “{name}”. It has to pair again to scan.": {},
-  "No paired computer is called “{name}”.": {},
-  "No computer is paired yet.": {},
-  "{name}  paired {paired}  last used {used}": {},
-  "never": {},
-  "Name: {name}": {},
-  "Port: {port}": {},
-  "Certificate: missing (run: sudo scanix500-server init)": {},
-  "Fingerprint: (run with sudo to see it)": {},
-  "Scanner: {device}": {},
-  "Scanner: not found": {},
-  "Paired computers: {count}": {},
-  "Paired computers: (run with sudo to see them)": {}
+  "Add Profile…": {
+    "de": "Profil hinzufügen…",
+    "es": "Añadir perfil…",
+    "fr": "Ajouter un profil…",
+    "zh-Hans": "添加配置…",
+    "zh-Hant": "添加配置…",
+    "hy": "Ավելացնել պրոֆիլ…"
+  },
+  "Edit Profile…": {
+    "de": "Profil bearbeiten…",
+    "es": "Editar perfil…",
+    "fr": "Modifier le profil…",
+    "zh-Hans": "编辑配置…",
+    "zh-Hant": "編輯配置…",
+    "hy": "Խմբագրել պրոֆիլը…"
+  },
+  "Delete Profile…": {
+    "de": "Profil löschen…",
+    "es": "Eliminar perfil…",
+    "fr": "Supprimer le profil…",
+    "zh-Hans": "删除配置…",
+    "zh-Hant": "刪除配置…",
+    "hy": "Ջնջել պրոֆիլը…"
+  },
+  "Set Bridge Scan Folder…": {
+    "de": "Ordner für Bridge-Scans festlegen…",
+    "es": "Elegir la carpeta de escaneos del puente…",
+    "fr": "Choisir le dossier des numérisations du pont…",
+    "zh-Hans": "设置桥接扫描文件夹…",
+    "zh-Hant": "設置橋接掃描文件夾…",
+    "hy": "Ընտրել bridge-ի սկանավորումների թղթապանակը…"
+  },
+  "Pair a Browser…": {
+    "de": "Browser koppeln…",
+    "es": "Emparejar un navegador…",
+    "fr": "Associer un navigateur…",
+    "zh-Hans": "配对浏览器…",
+    "zh-Hant": "配對瀏覽器…",
+    "hy": "Զուգակցել դիտարկիչ…"
+  },
+  "Forget Paired Browsers…": {
+    "de": "Gekoppelte Browser vergessen…",
+    "es": "Olvidar los navegadores emparejados…",
+    "fr": "Oublier les navigateurs associés…",
+    "zh-Hans": "忘记已配对的浏览器…",
+    "zh-Hant": "忘記已配對的瀏覽器…",
+    "hy": "Մոռանալ զուգակցված դիտարկիչները…"
+  },
+  "Quit": {
+    "de": "Beenden",
+    "es": "Salir",
+    "fr": "Quitter",
+    "zh-Hans": "退出",
+    "zh-Hant": "退出",
+    "hy": "Փակել"
+  },
+  "Background OCR unavailable": {
+    "de": "OCR im Hintergrund nicht verfügbar",
+    "es": "OCR en segundo plano no disponible",
+    "fr": "OCR en arrière-plan indisponible",
+    "zh-Hans": "后台 OCR 不可用",
+    "zh-Hant": "後臺 OCR 不可用",
+    "hy": "Ֆոնային OCR-ը հասանելի չէ"
+  },
+  "Scan bridge unavailable": {
+    "de": "Scan-Bridge nicht verfügbar",
+    "es": "Puente de escaneo no disponible",
+    "fr": "Pont de numérisation indisponible",
+    "zh-Hans": "扫描桥接不可用",
+    "zh-Hant": "掃描橋接不可用",
+    "hy": "Սկանավորման bridge-ը հասանելի չէ"
+  },
+  "Pair a Browser": {
+    "de": "Browser koppeln",
+    "es": "Emparejar un navegador",
+    "fr": "Associer un navigateur",
+    "zh-Hans": "配对浏览器",
+    "zh-Hant": "配對瀏覽器",
+    "hy": "Զուգակցել դիտարկիչ"
+  },
+  "Enter this code in Dossiary:\n\n{code}\n\nIt's valid for 2 minutes.": {
+    "de": "Gib diesen Code in Dossiary ein:\n\n{code}\n\nEr gilt 2 Minuten lang.",
+    "es": "Escriba este código en Dossiary:\n\n{code}\n\nEs válido durante 2 minutos.",
+    "fr": "Saisissez ce code dans Dossiary :\n\n{code}\n\nIl est valable 2 minutes.",
+    "zh-Hans": "请在 Dossiary 中输入此代码：\n\n{code}\n\n有效期为 2 分钟。",
+    "zh-Hant": "請在 Dossiary 中輸入此代碼：\n\n{code}\n\n有效期爲 2 分鐘。",
+    "hy": "Մուտքագրեք այս կոդը Dossiary-ում՝\n\n{code}\n\nԱյն վավեր է 2 րոպե։"
+  },
+  "Forget Paired Browsers": {
+    "de": "Gekoppelte Browser vergessen",
+    "es": "Olvidar los navegadores emparejados",
+    "fr": "Oublier les navigateurs associés",
+    "zh-Hans": "忘记已配对的浏览器",
+    "zh-Hant": "忘記已配對的瀏覽器",
+    "hy": "Մոռանալ զուգակցված դիտարկիչները"
+  },
+  "Forget all paired browsers ({count})? Dossiary will ask for a new pairing code before its next scan.": {
+    "de": "Alle gekoppelten Browser ({count}) vergessen? Dossiary fragt vor dem nächsten Scan nach einem neuen Kopplungscode.",
+    "es": "¿Olvidar todos los navegadores emparejados ({count})? Dossiary pedirá un nuevo código de emparejamiento antes del próximo escaneo.",
+    "fr": "Oublier tous les navigateurs associés ({count}) ? Dossiary demandera un nouveau code d'association avant la prochaine numérisation.",
+    "zh-Hans": "忘记所有已配对的浏览器（{count}）？Dossiary 会在下次扫描前要求新的配对码。",
+    "zh-Hant": "忘記所有已配對的瀏覽器（{count}）？Dossiary 會在下次掃描前要求新的配對碼。",
+    "hy": "Մոռանա՞լ բոլոր զուգակցված դիտարկիչները ({count})։ Հաջորդ սկանավորումից առաջ Dossiary-ն նոր զուգակցման կոդ կխնդրի։"
+  },
+  "Forget": {
+    "de": "Vergessen",
+    "es": "Olvidar",
+    "fr": "Oublier",
+    "zh-Hans": "忘记",
+    "zh-Hant": "忘記",
+    "hy": "Մոռանալ"
+  },
+  "Cancel": {
+    "de": "Abbrechen",
+    "es": "Cancelar",
+    "fr": "Annuler",
+    "zh-Hans": "取消",
+    "zh-Hant": "取消",
+    "hy": "Չեղարկել"
+  },
+  "Add Profile": {
+    "de": "Profil hinzufügen",
+    "es": "Añadir perfil",
+    "fr": "Ajouter un profil",
+    "zh-Hans": "添加配置",
+    "zh-Hant": "添加配置",
+    "hy": "Ավելացնել պրոֆիլ"
+  },
+  "Edit Profile": {
+    "de": "Profil bearbeiten",
+    "es": "Editar perfil",
+    "fr": "Modifier le profil",
+    "zh-Hans": "编辑配置",
+    "zh-Hant": "編輯配置",
+    "hy": "Խմբագրել պրոֆիլը"
+  },
+  "Delete Profile": {
+    "de": "Profil löschen",
+    "es": "Eliminar perfil",
+    "fr": "Supprimer le profil",
+    "zh-Hans": "删除配置",
+    "zh-Hant": "刪除配置",
+    "hy": "Ջնջել պրոֆիլը"
+  },
+  "Delete profile “{name}”?": {
+    "de": "Profil „{name}“ löschen?",
+    "es": "¿Eliminar el perfil «{name}»?",
+    "fr": "Supprimer le profil « {name} » ?",
+    "zh-Hans": "删除配置“{name}”？",
+    "zh-Hant": "刪除配置“{name}”？",
+    "hy": "Ջնջե՞լ «{name}» պրոֆիլը"
+  },
+  "Delete": {
+    "de": "Löschen",
+    "es": "Eliminar",
+    "fr": "Supprimer",
+    "zh-Hans": "删除",
+    "zh-Hant": "刪除",
+    "hy": "Ջնջել"
+  },
+  "A profile named {name!r} already exists": {
+    "de": "Ein Profil namens {name!r} gibt es schon",
+    "es": "Ya existe un perfil llamado {name!r}",
+    "fr": "Un profil nommé {name!r} existe déjà",
+    "zh-Hans": "已存在名为 {name!r} 的配置",
+    "zh-Hant": "已存在名爲 {name!r} 的配置",
+    "hy": "{name!r} անունով պրոֆիլ արդեն կա"
+  },
+  "No profile named {name!r}": {
+    "de": "Kein Profil namens {name!r}",
+    "es": "No hay ningún perfil llamado {name!r}",
+    "fr": "Aucun profil nommé {name!r}",
+    "zh-Hans": "没有名为 {name!r} 的配置",
+    "zh-Hant": "沒有名爲 {name!r} 的配置",
+    "hy": "{name!r} անունով պրոֆիլ չկա"
+  },
+  "Cannot delete the last remaining profile": {
+    "de": "Das letzte verbleibende Profil kann nicht gelöscht werden",
+    "es": "No se puede eliminar el último perfil",
+    "fr": "Impossible de supprimer le dernier profil",
+    "zh-Hans": "无法删除最后一个配置",
+    "zh-Hant": "無法刪除最後一個配置",
+    "hy": "Վերջին մնացած պրոֆիլը հնարավոր չէ ջնջել"
+  },
+  "Profile": {
+    "de": "Profil",
+    "es": "Perfil",
+    "fr": "Profil",
+    "zh-Hans": "配置",
+    "zh-Hant": "配置",
+    "hy": "Պրոֆիլ"
+  },
+  "Name:": {
+    "de": "Name:",
+    "es": "Nombre:",
+    "fr": "Nom :",
+    "zh-Hans": "名称：",
+    "zh-Hant": "名稱：",
+    "hy": "Անուն՝"
+  },
+  "Destination:": {
+    "de": "Ziel:",
+    "es": "Destino:",
+    "fr": "Destination :",
+    "zh-Hans": "目标位置：",
+    "zh-Hant": "目標位置：",
+    "hy": "Նպատակակետ՝"
+  },
+  "Choose…": {
+    "de": "Auswählen…",
+    "es": "Elegir…",
+    "fr": "Choisir…",
+    "zh-Hans": "选择…",
+    "zh-Hant": "選擇…",
+    "hy": "Ընտրել…"
+  },
+  "Use blank-page filter": {
+    "de": "Filter für leere Seiten verwenden",
+    "es": "Usar el filtro de páginas en blanco",
+    "fr": "Utiliser le filtre de pages blanches",
+    "zh-Hans": "使用空白页过滤",
+    "zh-Hant": "使用空白頁過濾",
+    "hy": "Օգտագործել դատարկ էջերի զտիչը"
+  },
+  "Use OCR": {
+    "de": "OCR verwenden",
+    "es": "Usar OCR",
+    "fr": "Utiliser l'OCR",
+    "zh-Hans": "使用 OCR",
+    "zh-Hant": "使用 OCR",
+    "hy": "Օգտագործել OCR"
+  },
+  "Split on blank separator sheets": {
+    "de": "An leeren Trennblättern trennen",
+    "es": "Separar en las hojas separadoras en blanco",
+    "fr": "Séparer aux feuilles blanches de séparation",
+    "zh-Hans": "按空白分隔纸分割",
+    "zh-Hant": "按空白分隔紙分割",
+    "hy": "Բաժանել դատարկ բաժանարար թերթերով"
+  },
+  "OK": {
+    "de": "OK",
+    "es": "Aceptar",
+    "fr": "OK",
+    "zh-Hans": "好",
+    "zh-Hant": "好",
+    "hy": "Լավ"
+  },
+  "Scan complete": {
+    "de": "Scan abgeschlossen",
+    "es": "Escaneo completado",
+    "fr": "Numérisation terminée",
+    "zh-Hans": "扫描完成",
+    "zh-Hant": "掃描完成",
+    "hy": "Սկանավորումն ավարտված է"
+  },
+  "Scan partially completed": {
+    "de": "Scan teilweise abgeschlossen",
+    "es": "Escaneo completado en parte",
+    "fr": "Numérisation terminée en partie",
+    "zh-Hans": "扫描部分完成",
+    "zh-Hant": "掃描部分完成",
+    "hy": "Սկանավորումը մասամբ ավարտված է"
+  },
+  "Scan failed": {
+    "de": "Scan fehlgeschlagen",
+    "es": "Error al escanear",
+    "fr": "Échec de la numérisation",
+    "zh-Hans": "扫描失败",
+    "zh-Hant": "掃描失敗",
+    "hy": "Սկանավորումը ձախողվեց"
+  },
+  "No pages scanned.": {
+    "de": "Keine Seiten gescannt.",
+    "es": "No se escaneó ninguna página.",
+    "fr": "Aucune page numérisée.",
+    "zh-Hans": "未扫描任何页面。",
+    "zh-Hant": "未掃描任何頁面。",
+    "hy": "Ոչ մի էջ չի սկանավորվել։"
+  },
+  "All pages were blank; no PDF written.": {
+    "de": "Alle Seiten waren leer; kein PDF geschrieben.",
+    "es": "Todas las páginas estaban en blanco; no se creó ningún PDF.",
+    "fr": "Toutes les pages étaient blanches ; aucun PDF créé.",
+    "zh-Hans": "所有页面均为空白；未生成 PDF。",
+    "zh-Hant": "所有頁面均爲空白；未生成 PDF。",
+    "hy": "Բոլոր էջերը դատարկ էին․ PDF չի ստեղծվել։"
+  },
+  "Created the server's certificate.": {
+    "de": "Das Zertifikat des Servers wurde erstellt.",
+    "es": "Se creó el certificado del servidor.",
+    "fr": "Le certificat du serveur a été créé.",
+    "zh-Hans": "已创建服务器证书。",
+    "zh-Hant": "已創建服務器證書。",
+    "hy": "Սերվերի վկայականը ստեղծվեց։"
+  },
+  "The server's certificate already exists.": {
+    "de": "Das Zertifikat des Servers gibt es schon.",
+    "es": "El certificado del servidor ya existe.",
+    "fr": "Le certificat du serveur existe déjà.",
+    "zh-Hans": "服务器证书已存在。",
+    "zh-Hant": "服務器證書已存在。",
+    "hy": "Սերվերի վկայականն արդեն կա։"
+  },
+  "Fingerprint: {fingerprint}": {
+    "de": "Fingerabdruck: {fingerprint}",
+    "es": "Huella digital: {fingerprint}",
+    "fr": "Empreinte : {fingerprint}",
+    "zh-Hans": "指纹：{fingerprint}",
+    "zh-Hant": "指紋：{fingerprint}",
+    "hy": "Մատնահետք՝ {fingerprint}"
+  },
+  "No certificate in {folder}. Create one with: sudo scanix500-server init": {
+    "de": "Kein Zertifikat in {folder}. Erstelle eines mit: sudo scanix500-server init",
+    "es": "No hay certificado en {folder}. Cree uno con: sudo scanix500-server init",
+    "fr": "Aucun certificat dans {folder}. Créez-en un avec : sudo scanix500-server init",
+    "zh-Hans": "{folder} 中没有证书。请用以下命令创建：sudo scanix500-server init",
+    "zh-Hant": "{folder} 中沒有證書。請用以下命令創建：sudo scanix500-server init",
+    "hy": "{folder}-ում վկայական չկա։ Ստեղծեք այն՝ sudo scanix500-server init"
+  },
+  "Pairing code: {code}  (valid {minutes} minutes)": {
+    "de": "Kopplungscode: {code}  (gültig {minutes} Minuten)",
+    "es": "Código de emparejamiento: {code}  (válido {minutes} minutos)",
+    "fr": "Code d'association : {code}  (valable {minutes} minutes)",
+    "zh-Hans": "配对码：{code}（{minutes} 分钟内有效）",
+    "zh-Hant": "配對碼：{code}（{minutes} 分鐘內有效）",
+    "hy": "Զուգակցման կոդ՝ {code}  (վավեր է {minutes} րոպե)"
+  },
+  "Check that Dossiary Scan Helper shows the same fingerprint before you enter the code.": {
+    "de": "Prüfe, ob Dossiary Scan Helper denselben Fingerabdruck zeigt, bevor du den Code eingibst.",
+    "es": "Compruebe que Dossiary Scan Helper muestra la misma huella digital antes de escribir el código.",
+    "fr": "Vérifiez que Dossiary Scan Helper affiche la même empreinte avant de saisir le code.",
+    "zh-Hans": "输入代码前，请确认 Dossiary Scan Helper 显示相同的指纹。",
+    "zh-Hant": "輸入代碼前，請確認 Dossiary Scan Helper 顯示相同的指紋。",
+    "hy": "Կոդը մուտքագրելուց առաջ ստուգեք, որ Dossiary Scan Helper-ը նույն մատնահետքն է ցույց տալիս։"
+  },
+  "Removed “{name}”. It has to pair again to scan.": {
+    "de": "„{name}“ entfernt. Er muss sich zum Scannen neu koppeln.",
+    "es": "Se quitó «{name}». Tendrá que emparejarse de nuevo para escanear.",
+    "fr": "« {name} » retiré. Il devra s'associer de nouveau pour numériser.",
+    "zh-Hans": "已移除“{name}”。它需要重新配对才能扫描。",
+    "zh-Hant": "已移除“{name}”。它需要重新配對才能掃描。",
+    "hy": "«{name}»-ը հեռացվեց։ Սկանավորելու համար այն պետք է կրկին զուգակցվի։"
+  },
+  "No paired computer is called “{name}”.": {
+    "de": "Kein gekoppelter Computer heißt „{name}“.",
+    "es": "Ningún ordenador emparejado se llama «{name}».",
+    "fr": "Aucun ordinateur associé ne s'appelle « {name} ».",
+    "zh-Hans": "没有名为“{name}”的已配对电脑。",
+    "zh-Hant": "沒有名爲“{name}”的已配對電腦。",
+    "hy": "«{name}» անունով զուգակցված համակարգիչ չկա։"
+  },
+  "No computer is paired yet.": {
+    "de": "Noch kein Computer gekoppelt.",
+    "es": "Aún no hay ningún ordenador emparejado.",
+    "fr": "Aucun ordinateur associé pour l'instant.",
+    "zh-Hans": "尚未配对任何电脑。",
+    "zh-Hant": "尚未配對任何電腦。",
+    "hy": "Դեռ ոչ մի համակարգիչ զուգակցված չէ։"
+  },
+  "{name}  paired {paired}  last used {used}": {
+    "de": "{name}  gekoppelt {paired}  zuletzt benutzt {used}",
+    "es": "{name}  emparejado {paired}  último uso {used}",
+    "fr": "{name}  associé {paired}  dernière utilisation {used}",
+    "zh-Hans": "{name}  配对于 {paired}  最近使用 {used}",
+    "zh-Hant": "{name}  配對於 {paired}  最近使用 {used}",
+    "hy": "{name}  զուգակցված՝ {paired}  վերջին օգտագործում՝ {used}"
+  },
+  "never": {
+    "de": "nie",
+    "es": "nunca",
+    "fr": "jamais",
+    "zh-Hans": "从未",
+    "zh-Hant": "從未",
+    "hy": "երբեք"
+  },
+  "Name: {name}": {
+    "de": "Name: {name}",
+    "es": "Nombre: {name}",
+    "fr": "Nom : {name}",
+    "zh-Hans": "名称：{name}",
+    "zh-Hant": "名稱：{name}",
+    "hy": "Անուն՝ {name}"
+  },
+  "Port: {port}": {
+    "de": "Port: {port}",
+    "es": "Puerto: {port}",
+    "fr": "Port : {port}",
+    "zh-Hans": "端口：{port}",
+    "zh-Hant": "端口：{port}",
+    "hy": "Պորտ՝ {port}"
+  },
+  "Certificate: missing (run: sudo scanix500-server init)": {
+    "de": "Zertifikat: fehlt (ausführen: sudo scanix500-server init)",
+    "es": "Certificado: falta (ejecute: sudo scanix500-server init)",
+    "fr": "Certificat : absent (exécutez : sudo scanix500-server init)",
+    "zh-Hans": "证书：缺失（运行：sudo scanix500-server init）",
+    "zh-Hant": "證書：缺失（運行：sudo scanix500-server init）",
+    "hy": "Վկայական՝ բացակայում է (գործարկեք՝ sudo scanix500-server init)"
+  },
+  "Fingerprint: (run with sudo to see it)": {
+    "de": "Fingerabdruck: (mit sudo ausführen, um ihn zu sehen)",
+    "es": "Huella digital: (ejecute con sudo para verla)",
+    "fr": "Empreinte : (exécutez avec sudo pour la voir)",
+    "zh-Hans": "指纹：（用 sudo 运行以查看）",
+    "zh-Hant": "指紋：（用 sudo 運行以查看）",
+    "hy": "Մատնահետք՝ (գործարկեք sudo-ով՝ տեսնելու համար)"
+  },
+  "Scanner: {device}": {
+    "de": "Scanner: {device}",
+    "es": "Escáner: {device}",
+    "fr": "Scanner : {device}",
+    "zh-Hans": "扫描仪：{device}",
+    "zh-Hant": "掃描儀：{device}",
+    "hy": "Սկաներ՝ {device}"
+  },
+  "Scanner: not found": {
+    "de": "Scanner: nicht gefunden",
+    "es": "Escáner: no encontrado",
+    "fr": "Scanner : introuvable",
+    "zh-Hans": "扫描仪：未找到",
+    "zh-Hant": "掃描儀：未找到",
+    "hy": "Սկաներ՝ չի գտնվել"
+  },
+  "Paired computers: {count}": {
+    "de": "Gekoppelte Computer: {count}",
+    "es": "Ordenadores emparejados: {count}",
+    "fr": "Ordinateurs associés : {count}",
+    "zh-Hans": "已配对的电脑：{count}",
+    "zh-Hant": "已配對的電腦：{count}",
+    "hy": "Զուգակցված համակարգիչներ՝ {count}"
+  },
+  "Paired computers: (run with sudo to see them)": {
+    "de": "Gekoppelte Computer: (mit sudo ausführen, um sie zu sehen)",
+    "es": "Ordenadores emparejados: (ejecute con sudo para verlos)",
+    "fr": "Ordinateurs associés : (exécutez avec sudo pour les voir)",
+    "zh-Hans": "已配对的电脑：（用 sudo 运行以查看）",
+    "zh-Hant": "已配對的電腦：（用 sudo 運行以查看）",
+    "hy": "Զուգակցված համակարգիչներ՝ (գործարկեք sudo-ով՝ տեսնելու համար)"
+  }
 }
