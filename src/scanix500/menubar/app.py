@@ -1,6 +1,7 @@
 # src/scanix500/menubar/app.py
 from __future__ import annotations
 
+import os
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -8,6 +9,7 @@ from pathlib import Path
 import rumps
 from PyObjCTools import AppHelper
 
+from scanix500.i18n import choose_language, macos_preferred_languages, set_language, t
 from scanix500.menubar.bridge import RealBackend, ScanBusyError, start_bridge_server
 from scanix500.menubar.ocr_jobs import OcrJobQueue, default_ocr_jobs_path
 from scanix500.menubar.bridge_settings import (
@@ -29,7 +31,7 @@ from scanix500.menubar.profiles import (
     replace_profile,
     save_profiles,
 )
-from scanix500.menubar.runner import ScanResult, notification_title, run_scan
+from scanix500.menubar.runner import ScanResult, display_message, notification_title, run_scan
 
 IDLE_TITLE = "📄"
 SCANNING_TITLE = "📄…"
@@ -46,7 +48,7 @@ RESOLVE_RETRY_TICKS = 20
 
 class ScanixMenuBarApp(rumps.App):
     def __init__(self):
-        super().__init__("scanix500", title=IDLE_TITLE)
+        super().__init__("scanix500", title=IDLE_TITLE, quit_button=t("Quit"))
         self.profiles_path = default_profiles_path()
         self.profiles = load_profiles(self.profiles_path)
         self.bridge_destination_path = default_bridge_destination_path()
@@ -83,7 +85,7 @@ class ScanixMenuBarApp(rumps.App):
             self._ocr_jobs = OcrJobQueue(default_ocr_jobs_path())
         except OSError as e:
             self._ocr_jobs = None
-            rumps.notification(title="Background OCR unavailable", subtitle="", message=str(e))
+            rumps.notification(title=t("Background OCR unavailable"), subtitle="", message=str(e))
         try:
             backend = RealBackend(lambda: self.bridge_destination, self,
                                   ocr_jobs=self._ocr_jobs if self._ocr_jobs is not None else False)
@@ -93,29 +95,29 @@ class ScanixMenuBarApp(rumps.App):
                 self._ocr_jobs.start()  # now, so unfinished jobs resume after a restart
         except (OSError, ValueError) as e:
             self._bridge_server = None
-            rumps.notification(title="Scan bridge unavailable", subtitle="", message=str(e))
+            rumps.notification(title=t("Scan bridge unavailable"), subtitle="", message=str(e))
 
     def _rebuild_menu(self):
         self.menu.clear()
         for profile in self.profiles:
             self.menu.add(rumps.MenuItem(profile.name, callback=self._make_scan_handler(profile)))
         self.menu.add(rumps.separator)
-        self.menu.add(rumps.MenuItem("Add Profile…", callback=self._add_profile))
+        self.menu.add(rumps.MenuItem(t("Add Profile…"), callback=self._add_profile))
 
-        edit_menu = rumps.MenuItem("Edit Profile…")
+        edit_menu = rumps.MenuItem(t("Edit Profile…"))
         for profile in self.profiles:
             edit_menu.add(rumps.MenuItem(profile.name, callback=self._make_edit_handler(profile.name)))
         self.menu.add(edit_menu)
 
-        delete_menu = rumps.MenuItem("Delete Profile…")
+        delete_menu = rumps.MenuItem(t("Delete Profile…"))
         for profile in self.profiles:
             delete_menu.add(rumps.MenuItem(profile.name, callback=self._make_delete_handler(profile.name)))
         self.menu.add(delete_menu)
 
         self.menu.add(rumps.separator)
-        self.menu.add(rumps.MenuItem("Set Bridge Scan Folder…", callback=self._set_bridge_destination))
-        self.menu.add(rumps.MenuItem("Pair a Browser…", callback=self._pair_browser))
-        self.menu.add(rumps.MenuItem("Forget Paired Browsers…", callback=self._forget_paired_browsers))
+        self.menu.add(rumps.MenuItem(t("Set Bridge Scan Folder…"), callback=self._set_bridge_destination))
+        self.menu.add(rumps.MenuItem(t("Pair a Browser…"), callback=self._pair_browser))
+        self.menu.add(rumps.MenuItem(t("Forget Paired Browsers…"), callback=self._forget_paired_browsers))
 
         # rumps appends the Quit item itself, but only once, inside
         # initializeStatusBar() — which runs at the end of App.run(), after
@@ -254,7 +256,7 @@ class ScanixMenuBarApp(rumps.App):
     def _on_scan_complete(self, result: ScanResult):
         self._scanning = False
         self.title = IDLE_TITLE
-        rumps.notification(title=notification_title(result), subtitle="", message=result.message)
+        rumps.notification(title=notification_title(result), subtitle="", message=display_message(result.message))
 
     def _pair_browser(self, _sender):
         """Shows a fresh pairing code for Dossiary to enter. The code stays
@@ -262,17 +264,17 @@ class ScanixMenuBarApp(rumps.App):
         open -- the bridge keeps serving on its own threads meanwhile."""
         code = self.pairing.open_window()
         rumps.alert(
-            title="Pair a Browser",
-            message=f"Enter this code in Dossiary:\n\n{code[:3]} {code[3:]}\n\nIt's valid for 2 minutes.",
+            title=t("Pair a Browser"),
+            message=t("Enter this code in Dossiary:\n\n{code}\n\nIt's valid for 2 minutes.", code=f"{code[:3]} {code[3:]}"),
         )
 
     def _forget_paired_browsers(self, _sender):
         count = self.pairing.paired_count()
         answer = rumps.alert(
-            title="Forget Paired Browsers",
-            message=f"Forget all {count} paired browser(s)? Dossiary will ask for a new pairing code before its next scan.",
-            ok="Forget",
-            cancel="Cancel",
+            title=t("Forget Paired Browsers"),
+            message=t("Forget all paired browsers ({count})? Dossiary will ask for a new pairing code before its next scan.", count=count),
+            ok=t("Forget"),
+            cancel=t("Cancel"),
         )
         if answer == 1:
             self.pairing.forget_all()
@@ -295,7 +297,7 @@ class ScanixMenuBarApp(rumps.App):
         try:
             self.profiles = add_profile(self.profiles, profile)
         except ValueError as e:
-            rumps.alert("Add Profile", str(e))
+            rumps.alert(t("Add Profile"), str(e))
             return
         save_profiles(self.profiles_path, self.profiles)
         self._rebuild_menu()
@@ -311,7 +313,7 @@ class ScanixMenuBarApp(rumps.App):
             try:
                 self.profiles = replace_profile(self.profiles, name, updated)
             except ValueError as e:
-                rumps.alert("Edit Profile", str(e))
+                rumps.alert(t("Edit Profile"), str(e))
                 return
             save_profiles(self.profiles_path, self.profiles)
             self._rebuild_menu()
@@ -321,13 +323,13 @@ class ScanixMenuBarApp(rumps.App):
         def handler(_sender):
             if self._scanning:
                 return
-            confirmed = rumps.alert("Delete Profile", f'Delete profile "{name}"?', ok="Delete", cancel="Cancel") == 1
+            confirmed = rumps.alert(t("Delete Profile"), t("Delete profile “{name}”?", name=name), ok=t("Delete"), cancel=t("Cancel")) == 1
             if not confirmed:
                 return
             try:
                 self.profiles = delete_profile(self.profiles, name)
             except ValueError as e:
-                rumps.alert("Delete Profile", str(e))
+                rumps.alert(t("Delete Profile"), str(e))
                 return
             save_profiles(self.profiles_path, self.profiles)
             self._rebuild_menu()
@@ -335,6 +337,7 @@ class ScanixMenuBarApp(rumps.App):
 
 
 def main():
+    set_language(choose_language(os.environ, macos_preferred_languages()))
     ScanixMenuBarApp().run()
 
 

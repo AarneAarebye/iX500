@@ -6,6 +6,8 @@ import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from scanix500.i18n import t
+
 
 @dataclass
 class Profile:
@@ -109,21 +111,21 @@ def save_profiles(path: Path, profiles: list[Profile]) -> None:
 
 def add_profile(profiles: list[Profile], profile: Profile) -> list[Profile]:
     if any(p.name == profile.name for p in profiles):
-        raise ValueError(f"A profile named {profile.name!r} already exists")
+        raise ValueError(t("A profile named {name!r} already exists", name=profile.name))
     return [*profiles, profile]
 
 
 def replace_profile(profiles: list[Profile], name: str, updated: Profile) -> list[Profile]:
     if not any(p.name == name for p in profiles):
-        raise ValueError(f"No profile named {name!r}")
+        raise ValueError(t("No profile named {name!r}", name=name))
     if updated.name != name and any(p.name == updated.name for p in profiles):
-        raise ValueError(f"A profile named {updated.name!r} already exists")
+        raise ValueError(t("A profile named {name!r} already exists", name=updated.name))
     return [updated if p.name == name else p for p in profiles]
 
 
 def delete_profile(profiles: list[Profile], name: str) -> list[Profile]:
     if not any(p.name == name for p in profiles):
-        raise ValueError(f"No profile named {name!r}")
+        raise ValueError(t("No profile named {name!r}", name=name))
     if len(profiles) == 1:
-        raise ValueError("Cannot delete the last remaining profile")
+        raise ValueError(t("Cannot delete the last remaining profile"))
     return [p for p in profiles if p.name != name]

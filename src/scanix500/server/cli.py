@@ -12,12 +12,14 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import signal
 import sys
 import threading
 from xml.sax.saxutils import escape
 
 from scanix500 import __version__
+from scanix500.i18n import choose_language, set_language, t
 from scanix500.menubar.bridge import RealBackend, RemoteOptions
 from scanix500.menubar.button_watcher import resolve_device_name
 from scanix500.menubar.fakes import FakeBackend, FakePairing
@@ -34,19 +36,19 @@ def _store(cfg: ServerConfig) -> SharedWindowPairingStore:
 
 
 def _fingerprint_line(cfg: ServerConfig) -> str:
-    return f"Fingerprint: {display_fingerprint(certificate_sha256(cfg.cert_path))}"
+    return t("Fingerprint: {fingerprint}", fingerprint=display_fingerprint(certificate_sha256(cfg.cert_path)))
 
 
 def cmd_init(cfg: ServerConfig) -> int:
     made = generate_certificate(cfg.tls_dir, cfg.name)
-    print(("Created the server's certificate." if made else "The server's certificate already exists."))
+    print((t("Created the server's certificate.") if made else t("The server's certificate already exists.")))
     print(_fingerprint_line(cfg))
     return 0
 
 
 def cmd_run(cfg: ServerConfig, fake: bool) -> int:
     if not (cfg.cert_path.exists() and cfg.key_path.exists()):
-        print(f"No certificate in {cfg.tls_dir}. Create one with: sudo scanix500-server init", file=sys.stderr)
+        print(t("No certificate in {folder}. Create one with: sudo scanix500-server init", folder=cfg.tls_dir), file=sys.stderr)
         return 1
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     cfg.scans_path.mkdir(parents=True, exist_ok=True)
@@ -80,10 +82,10 @@ def cmd_run(cfg: ServerConfig, fake: bool) -> int:
 def cmd_pair(cfg: ServerConfig) -> int:
     code = _store(cfg).open_window()
     minutes = SERVER_CODE_LIFETIME_SECONDS // 60
-    print(f"Pairing code: {code}  (valid {minutes} minutes)")
+    print(t("Pairing code: {code}  (valid {minutes} minutes)", code=code, minutes=minutes))
     if cfg.cert_path.exists():
         print(_fingerprint_line(cfg))
-        print("Check that Dossiary Scan Helper shows the same fingerprint before you enter the code.")
+        print(t("Check that Dossiary Scan Helper shows the same fingerprint before you enter the code."))
     return 0
 
 
@@ -91,15 +93,15 @@ def cmd_clients(cfg: ServerConfig, revoke: str | None) -> int:
     store = _store(cfg)
     if revoke is not None:
         if store.revoke(revoke):
-            print(f"Removed “{revoke}”. It has to pair again to scan.")
+            print(t("Removed “{name}”. It has to pair again to scan.", name=revoke))
             return 0
-        print(f"No paired computer is called “{revoke}”.", file=sys.stderr)
+        print(t("No paired computer is called “{name}”.", name=revoke), file=sys.stderr)
         return 1
     rows = store.clients()
     if not rows:
-        print("No computer is paired yet.")
+        print(t("No computer is paired yet."))
     for row in rows:
-        print(f"{row['name']}  paired {row['paired_at'] or '?'}  last used {row['last_used'] or 'never'}")
+        print(t("{name}  paired {paired}  last used {used}", name=row['name'], paired=row['paired_at'] or '?', used=row['last_used'] or t("never")))
     return 0
 
 
@@ -116,20 +118,20 @@ def _paired_count(cfg: ServerConfig) -> int:
 
 def cmd_status(cfg: ServerConfig) -> int:
     print(f"scanix500-server {__version__}")
-    print(f"Name: {cfg.name}")
-    print(f"Port: {cfg.port}")
+    print(t("Name: {name}", name=cfg.name))
+    print(t("Port: {port}", port=cfg.port))
     # The state folder is readable only by the service's user and root (it
     # holds scans and pairings), so without sudo some lines can't be shown.
     try:
-        print(_fingerprint_line(cfg) if cfg.cert_path.exists() else "Certificate: missing (run: sudo scanix500-server init)")
+        print(_fingerprint_line(cfg) if cfg.cert_path.exists() else t("Certificate: missing (run: sudo scanix500-server init)"))
     except PermissionError:
-        print("Fingerprint: (run with sudo to see it)")
+        print(t("Fingerprint: (run with sudo to see it)"))
     device = resolve_device_name()
-    print(f"Scanner: {device}" if device else "Scanner: not found")
+    print(t("Scanner: {device}", device=device) if device else t("Scanner: not found"))
     try:
-        print(f"Paired computers: {_paired_count(cfg)}")
+        print(t("Paired computers: {count}", count=_paired_count(cfg)))
     except PermissionError:
-        print("Paired computers: (run with sudo to see them)")
+        print(t("Paired computers: (run with sudo to see them)"))
     return 0
 
 
@@ -149,6 +151,7 @@ def cmd_avahi_service(cfg: ServerConfig) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    set_language(choose_language(os.environ))
     parser = argparse.ArgumentParser(prog="scanix500-server", description="The iX500 as a network scanner.")
     parser.add_argument("--version", action="version", version=f"scanix500-server {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)

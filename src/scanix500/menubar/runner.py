@@ -7,6 +7,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from scanix500.i18n import t
 from scanix500.menubar.profiles import Profile
 
 _KNOWN_MESSAGES = {"No pages scanned.", "All pages were blank; no PDF written."}
@@ -60,10 +61,21 @@ def parse_scan_output(returncode: int, stdout: str, stderr: str) -> ScanResult:
 
 def notification_title(result: ScanResult) -> str:
     if result.ok and not result.partial:
-        return "Scan complete"
+        return t("Scan complete")
     if result.partial:
-        return "Scan partially completed"
-    return "Scan failed"
+        return t("Scan partially completed")
+    return t("Scan failed")
+
+
+# The notification's message. ScanResult.message itself stays English: the bridge sends it to
+# Dossiary, and runner and bridge recognise these exact texts.
+def display_message(message: str) -> str:
+    known = {
+        "Scan complete": t("Scan complete"),
+        "No pages scanned.": t("No pages scanned."),
+        "All pages were blank; no PDF written.": t("All pages were blank; no PDF written."),
+    }
+    return known.get(message, message)
 
 
 def _scanix500_executable() -> str:

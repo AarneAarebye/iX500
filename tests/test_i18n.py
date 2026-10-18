@@ -67,3 +67,34 @@ def test_t_without_arguments_keeps_braces():
 
 def test_strings_json_loads():
     assert isinstance(i18n.load_strings(), dict)
+
+
+import ast
+import json
+from pathlib import Path
+
+SRC = Path(__file__).resolve().parents[1] / "src" / "scanix500"
+
+
+def source_keys() -> set[str]:
+    keys = set()
+    for path in SRC.rglob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "t"
+                    and node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)):
+                keys.add(node.args[0].value)
+    return keys
+
+
+def catalog() -> dict:
+    return json.loads((SRC / "strings.json").read_text(encoding="utf-8"))
+
+
+def test_every_key_in_the_code_is_in_the_catalog_and_back():
+    used, known = source_keys(), set(catalog())
+    assert sorted(used - known) == [], "used but not in strings.json"
+    assert sorted(known - used) == [], "in strings.json but not used"
+
+
+def test_the_catalog_has_the_expected_size():
+    assert len(catalog()) == 55
