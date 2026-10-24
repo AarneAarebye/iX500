@@ -22,3 +22,11 @@ def test_compute_output_paths_multiple_files_are_sequentially_numbered():
         Path("/dest/scan_2026-09-13_143012_2.pdf"),
         Path("/dest/scan_2026-09-13_143012_3.pdf"),
     ]
+
+
+def test_the_extension_is_a_parameter_and_defaults_to_pdf():
+    now = datetime(2026, 10, 24, 12, 0, 0)
+    assert compute_output_paths(Path("/d"), 1, now=now) == [Path("/d/scan_2026-10-24_120000.pdf")]
+    assert compute_output_paths(Path("/d"), 1, now=now, extension="jpg") == [Path("/d/scan_2026-10-24_120000.jpg")]
+    assert compute_output_paths(Path("/d"), 2, now=now, extension="png") == [
+        Path("/d/scan_2026-10-24_120000_1.png"), Path("/d/scan_2026-10-24_120000_2.png")]
