@@ -186,3 +186,16 @@ def test_profiles_saved_before_the_new_fields_still_load(tmp_path):
     (tmp_path / ".hardware_button_seeded").touch()
     [profile] = load_profiles(path)
     assert (profile.duplex, profile.color_mode, profile.resolution, profile.keep_blank_pages) == (True, "color", 300, False)
+
+
+def test_profile_scanner_defaults_to_the_ix500_and_old_files_still_load(tmp_path):
+    import json
+    from scanix500.menubar.profiles import load_profiles, save_profiles
+
+    path = tmp_path / "profiles.json"
+    path.write_text(json.dumps([{"name": "Old", "destination": "/d", "duplex": False}]))
+    loaded = load_profiles(path)
+    assert loaded[0].scanner == "sane:ix500"
+
+    save_profiles(path, [Profile(name="Flat", destination="/d", scanner="sane:canoscan-8800f")])
+    assert load_profiles(path)[0].scanner == "sane:canoscan-8800f"
