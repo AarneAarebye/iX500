@@ -2,8 +2,8 @@ from pathlib import Path
 
 from scanix500 import scanners
 from scanix500.scanners import (
-    CANOSCAN_8800F, CANOSCAN_8800F_ID, IX500, IX500_ID, KNOWN_SCANNERS, attached_scanners, get_scanner,
-    usb_ids, usb_ids_from_ioreg, usb_ids_from_sysfs,
+    AREAS, CANOSCAN_8800F, CANOSCAN_8800F_ID, IX500, IX500_ID, KNOWN_SCANNERS, MAX_PIXELS, attached_scanners,
+    get_scanner, pixel_count, usb_ids, usb_ids_from_ioreg, usb_ids_from_sysfs,
 )
 
 # Shape of `ioreg -p IOUSB -l -w0` (checked on macOS 27): device nodes start with "+-o",
@@ -113,7 +113,7 @@ def test_get_scanner():
 def test_the_8800f_entry_is_a_flatbed_without_extras():
     assert CANOSCAN_8800F["sources"] == ["flatbed"] and CANOSCAN_8800F["duplex"] is False
     assert CANOSCAN_8800F["extras"] == []
-    assert CANOSCAN_8800F["resolutions"] == [150, 300, 600]
+    assert CANOSCAN_8800F["resolutions"] == [150, 300, 600, 1200]
     assert CANOSCAN_8800F["colorModes"] == ["color", "gray", "bw"]
     assert CANOSCAN_8800F["name"] == "Canon CanoScan 8800F"
 
@@ -124,3 +124,31 @@ def test_catalogue_ids_and_usb_ids_are_unique_and_match_their_entries():
     for s in KNOWN_SCANNERS:
         assert s.entry["id"] == s.id and s.entry["name"] == s.name
         assert s.name in s.not_connected_message
+
+
+def test_areas_table_matches_the_protocol():
+    assert AREAS == {"a4": (210, 297, "A4"), "a5": (148, 210, "A5"), "a6": (105, 148, "A6"),
+                     "10x15": (100, 150, "10 x 15 cm"), "13x18": (130, 180, "13 x 18 cm")}
+
+
+def test_pixel_count_rounds_each_side_to_whole_pixels():
+    assert pixel_count("a4", 600) == 4961 * 7016
+    assert pixel_count("10x15", 1200) == 4724 * 7087
+    assert pixel_count("a4", 1200) == 9921 * 14031
+
+
+def test_only_a4_at_1200_dpi_is_over_the_limit_for_the_8800f():
+    over = {(area, dpi) for area in CANOSCAN_8800F["areas"] for dpi in CANOSCAN_8800F["resolutions"]
+            if pixel_count(area, dpi) > MAX_PIXELS}
+    assert over == {("a4", 1200)}
+
+
+def test_the_8800f_offers_images_areas_and_1200_dpi():
+    assert CANOSCAN_8800F["formats"] == ["pdf", "jpeg", "png"]
+    assert CANOSCAN_8800F["areas"] == ["a4", "a5", "a6", "10x15", "13x18"]
+    assert CANOSCAN_8800F["resolutions"] == [150, 300, 600, 1200]
+    assert "formats" not in IX500 and "areas" not in IX500
+
+
+def test_every_8800f_area_is_in_the_table():
+    assert set(CANOSCAN_8800F["areas"]) <= set(AREAS)

@@ -30,15 +30,38 @@ IX500 = {
     "ocr": {"languages": ["deu", "eng", "fra", "spa", "chi_sim", "chi_tra"]},
 }
 
-# One A4 page per scan from the glass; no feeder, so no blank-page extras.
+# Scan areas (PROTOCOL.md "Formats and areas"): id -> (width mm, height mm, label),
+# upright, anchored at the glass's corner mark.
+AREAS = {
+    "a4": (210, 297, "A4"),
+    "a5": (148, 210, "A5"),
+    "a6": (105, 148, "A6"),
+    "10x15": (100, 150, "10 x 15 cm"),
+    "13x18": (130, 180, "13 x 18 cm"),
+}
+
+# The size limit of one scan, in pixels. The Pi has about 3.4 GB available and a
+# scan peaks near three times its raw size, so 100 megapixels (300 MB raw in color)
+# is safe there; A4 at 1200 dpi (139 megapixels) is over it.
+MAX_PIXELS = 100_000_000
+
+
+def pixel_count(area: str, dpi: int) -> int:
+    width_mm, height_mm, _ = AREAS[area]
+    return round(width_mm / 25.4 * dpi) * round(height_mm / 25.4 * dpi)
+
+
+# One image or A4 page per scan from the glass; no feeder, so no blank-page extras.
 CANOSCAN_8800F = {
     "id": CANOSCAN_8800F_ID,
     "name": "Canon CanoScan 8800F",
     "sources": ["flatbed"],
     "duplex": False,
     "colorModes": ["color", "gray", "bw"],
-    "resolutions": [150, 300, 600],
+    "resolutions": [150, 300, 600, 1200],
     "extras": [],
+    "formats": ["pdf", "jpeg", "png"],
+    "areas": ["a4", "a5", "a6", "10x15", "13x18"],
     "ocr": {"languages": ["deu", "eng", "fra", "spa", "chi_sim", "chi_tra"]},
 }
 
