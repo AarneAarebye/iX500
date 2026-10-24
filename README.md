@@ -111,6 +111,27 @@ Actions for every `v*` tag and attached to the release.
 
 ![Dossiary talks to the scan helper on localhost; only the helper's hop to scanix500-server on the Raspberry Pi crosses the network, over HTTPS with a pinned certificate. A measured 6-page duplex scan reaches Dossiary's Inbox after 27 s and is searchable after about 179 s, against 332 s if the Pi recognised the text first.](docs/images/pi-scan-path.svg)
 
+## Canon CanoScan 8800F (flatbed)
+
+The CanoScan 8800F works as a second scanner next to the iX500: one A4 page
+per scan from the glass, 150/300/600 dpi, color/gray/black & white, with OCR.
+It uses SANE's `pixma` backend, which `sane-backends` includes. Scanners are
+listed in Dossiary only while they are plugged in (the USB bus is checked, SANE
+is not opened), so an unplugged scanner disappears from the picker.
+
+- **On the Mac**, its three PDF scan buttons start a scan with the "Hardware
+  Button" profile, like the iX500's button: COLOR scans in color, BLACK & WHITE
+  in black & white, CUSTOM uses the profile as it is. COPY, PHOTO/FILM, E-MAIL
+  and FINISH do nothing. Feeder settings in that profile (both sides, split on
+  blank pages) don't apply to the glass and are ignored.
+- **On `scanix500-server`** it appears in Dossiary Scan Helper like any scanner.
+  The server's button only pairs computers, for either scanner.
+- Its pages are not trimmed, snapped to a paper size or checked for blankness:
+  the lid is white and a scan is one page. A smaller sheet leaves white margin.
+- Photos, higher resolutions and film are not supported yet.
+- On the Raspberry Pi, plug scanners in while it is switched off: hot-plugging
+  one has frozen the Pi until its power was cut.
+
 ## Languages
 
 The menu bar app (menu, alerts, the profile form, notifications) and `scanix500-server`'s output are

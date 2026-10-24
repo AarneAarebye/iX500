@@ -143,7 +143,7 @@ existing 409.
 
 - 8800F not attached: not in `GET /scanners`; `POST /scan` 503 with
   "The Canon CanoScan 8800F isn't connected. Check that it's plugged in and
-  switched on." (translated through `t()` like the iX500 message).
+  switched on." (English, like the iX500's: the text goes to Dossiary, not to a person at the Mac).
 - SANE can't open it / refuses a setting: the existing error classes and
   messages, with the scanner named.
 - USB discovery failure: nothing attached, never an exception in the HTTP thread.
