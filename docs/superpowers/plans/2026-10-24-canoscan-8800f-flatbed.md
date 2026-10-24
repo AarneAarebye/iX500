@@ -470,10 +470,13 @@ class _FakeFlatbedDev:
 
     def __init__(self, image):
         self._image = image
-        self.snaps = 0
+        self.scans = 0
 
     def snap(self):
-        self.snaps += 1
+        raise AssertionError("snap() without start() never returns on real hardware")
+
+    def scan(self):
+        self.scans += 1
         return self._image
 
 
@@ -494,14 +497,14 @@ def test_flatbed_returns_one_frame_with_its_dpi_then_stops():
     assert frame.info["tag"] == "glass" and frame.info["dpi"] == (600, 600)
     with pytest.raises(StopIteration):
         device.read_frame()
-    assert device._dev.snaps == 1 and device.multi_feed_detected() is False
+    assert device._dev.scans == 1 and device.multi_feed_detected() is False
 
 
 def test_flatbed_scans_again_after_a_new_start():
     device = _flatbed_with(_img("glass"))
     device.start(); device.read_frame()
     device.start(); device.read_frame()
-    assert device._dev.snaps == 2
+    assert device._dev.scans == 2
 
 
 def test_capture_pages_gives_one_page_for_a_flatbed():
@@ -587,7 +590,7 @@ class PySaneFlatbed:
         if not self._pending:
             raise StopIteration
         self._pending = False
-        frame = self._dev.snap()
+        frame = self._dev.scan()  # start()+snap(); snap() alone never returns
         # python-sane never sets .info["dpi"]; pdf_builder needs it for the
         # PDF page geometry (see PySaneDevice.read_frame).
         frame.info["dpi"] = (self._resolution, self._resolution)

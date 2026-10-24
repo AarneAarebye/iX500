@@ -278,7 +278,8 @@ class PySaneFlatbed:
         if not self._pending:
             raise StopIteration
         self._pending = False
-        frame = self._dev.snap()
+        # scan() is start() + snap(); snap() alone never returns here.
+        frame = self._dev.scan()
         # python-sane never sets .info["dpi"]; pdf_builder needs it for the
         # PDF page geometry (see PySaneDevice.read_frame).
         frame.info["dpi"] = (self._resolution, self._resolution)
