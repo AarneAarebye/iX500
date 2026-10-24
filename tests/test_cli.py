@@ -253,7 +253,7 @@ def test_flatbed_scan_uses_the_flatbed_device_and_skips_trim_snap_and_blank_filt
         exit_code = main([str(tmp_path), "--scanner", "sane:canoscan-8800f", "--mode", "gray", "--resolution", "600"])
 
     assert exit_code == 0
-    flatbed.assert_called_once_with(color_mode="gray", resolution=600)
+    flatbed.assert_called_once_with(color_mode="gray", resolution=600, area="a4")
     feeder.assert_not_called()
     assert capture.call_args.kwargs == {"duplex": False}
     assert len(PdfReader(next(tmp_path.glob("scan_*.pdf"))).pages) == 1
@@ -287,3 +287,49 @@ def test_an_unknown_scanner_id_is_refused(tmp_path):
     import pytest
     with pytest.raises(SystemExit):
         main([str(tmp_path), "--scanner", "sane:nope"])
+
+
+def test_flatbed_jpeg_scan_writes_one_image_not_a_pdf(tmp_path, capsys):
+    from PIL import Image
+    page = PagePair(_content_image())
+    with patch("scanix500.cli.PySaneFlatbed") as flatbed, patch(
+        "scanix500.cli.capture_pages", return_value=[page]
+    ), patch("scanix500.cli.build_pdf", side_effect=AssertionError("built a PDF")):
+        exit_code = main([str(tmp_path), "--scanner", "sane:canoscan-8800f", "--format", "jpeg",
+                          "--area", "10x15", "--resolution", "600"])
+
+    assert exit_code == 0
+    flatbed.assert_called_once_with(color_mode="color", resolution=600, area="10x15")
+    files = list(tmp_path.iterdir())
+    assert [f.suffix for f in files] == [".jpg"] and files[0].name.startswith("scan_")
+    assert capsys.readouterr().out.strip() == str(files[0])
+    image = Image.open(files[0])
+    assert image.format == "JPEG" and [round(v) for v in image.info["dpi"]] == [600, 600]
+
+
+def test_flatbed_black_and_white_png_is_one_bit(tmp_path):
+    from PIL import Image
+    with patch("scanix500.cli.PySaneFlatbed"), patch(
+        "scanix500.cli.capture_pages", return_value=[PagePair(_content_image())]
+    ):
+        exit_code = main([str(tmp_path), "--scanner", "sane:canoscan-8800f", "--format", "png", "--mode", "bw"])
+    assert exit_code == 0
+    (png,) = tmp_path.glob("scan_*.png")
+    assert Image.open(png).mode == "1"
+
+
+def test_the_ix500_refuses_an_image_format(tmp_path, capsys):
+    with patch("scanix500.cli.PySaneDevice") as feeder, patch("scanix500.cli.PySaneFlatbed") as flatbed:
+        exit_code = main([str(tmp_path), "--format", "jpeg"])
+    assert exit_code == 1
+    feeder.assert_not_called()
+    flatbed.assert_not_called()
+    assert "only the CanoScan 8800F makes images" in capsys.readouterr().err
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_an_unknown_format_or_area_is_refused_by_the_parser(tmp_path):
+    import pytest
+    for bad in (["--format", "tiff"], ["--area", "letter"]):
+        with pytest.raises(SystemExit):
+            main([str(tmp_path), *bad])

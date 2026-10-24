@@ -507,7 +507,7 @@ def test_health_is_version_2_and_keeps_the_service_name(v2_server):
     base, _ = v2_server
     status, body, headers = _request(base, "GET", "/health")
     assert status == 200
-    assert body == {"ok": True, "helper": "scanix500", "version": "0.8.0", "protocol": 2,
+    assert body == {"ok": True, "helper": "scanix500", "version": "0.9.0", "protocol": 2,
                     "paired": True, "service": "scanix500-bridge"}
     assert headers["Content-Type"].startswith("application/json")
 
@@ -714,7 +714,7 @@ def test_scan_on_an_unplugged_known_scanner_is_503(v2_server):
 
 def test_unplugged_known_scanner_is_still_validated_first(v2_server):
     base, _ = v2_server
-    status, _, _ = _request(base, "POST", "/scan", {"scanner": "sane:canoscan-8800f", "resolution": 1200})
+    status, _, _ = _request(base, "POST", "/scan", {"scanner": "sane:canoscan-8800f", "resolution": 4800})
     assert status == 422
     status, _, _ = _request(base, "POST", "/scan", {"scanner": "sane:canoscan-8800f", "duplex": "yes"})
     assert status == 400
@@ -724,3 +724,35 @@ def test_scan_on_an_unknown_scanner_is_still_404(v2_server):
     base, _ = v2_server
     status, _, _ = _request(base, "POST", "/scan", {"scanner": "sane:nope"})
     assert status == 404
+
+
+def test_scanners_lists_the_8800fs_formats_and_areas(v2_server, monkeypatch):
+    base, _ = v2_server
+    monkeypatch.setattr("scanix500.scanners.usb_ids", lambda: BOTH)
+    _, body, _ = _request(base, "GET", "/scanners")
+    ix500, canoscan = body["scanners"]
+    assert "formats" not in ix500 and "areas" not in ix500
+    assert canoscan["formats"] == ["pdf", "jpeg", "png"]
+    assert canoscan["areas"] == ["a4", "a5", "a6", "10x15", "13x18"]
+    assert canoscan["resolutions"] == [150, 300, 600, 1200]
+
+
+def test_a_photo_scan_runs_a_profile_with_its_format_and_area(v2_server, monkeypatch):
+    base, trigger = v2_server
+    monkeypatch.setattr("scanix500.scanners.usb_ids", lambda: BOTH)
+    _request(base, "POST", "/scan", {"scanner": "sane:canoscan-8800f", "format": "jpeg", "area": "10x15",
+                                     "resolution": 1200})
+    p = trigger.called_with
+    assert (p.scanner, p.format, p.area, p.resolution) == ("sane:canoscan-8800f", "jpeg", "10x15", 1200)
+
+
+def test_the_bridge_refuses_what_the_protocol_refuses(v2_server, monkeypatch):
+    base, trigger = v2_server
+    monkeypatch.setattr("scanix500.scanners.usb_ids", lambda: BOTH)
+    for body in ({"format": "jpeg", "colorMode": "bw"}, {"format": "png", "ocr": True},
+                 {"area": "a4", "resolution": 1200}, {"format": "tiff"}):
+        status, response, _ = _request(base, "POST", "/scan", {"scanner": "sane:canoscan-8800f", **body})
+        assert status == 422 and response["message"] == response["error"], body
+    status, _, _ = _request(base, "POST", "/scan", {"scanner": "sane:ix500", "format": "jpeg"})
+    assert status == 422
+    assert trigger.called_with is None

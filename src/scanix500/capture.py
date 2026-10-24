@@ -4,6 +4,7 @@ from typing import Protocol
 from PIL import Image
 
 from scanix500.errors import MultiFeedError, NoPagesScannedError, ScannerNotFoundError, ScannerSetupError
+from scanix500.scanners import AREAS
 
 
 @dataclass
@@ -222,12 +223,12 @@ class PySaneDevice:
 
 class PySaneFlatbed:
     """The CanoScan 8800F's glass through python-sane (SANE's pixma
-    backend): one A4 page per scan, then StopIteration, so capture_pages(
+    backend): one page (the chosen scan area) per scan, then StopIteration, so capture_pages(
     duplex=False) returns one page. Imports `sane` lazily like PySaneDevice;
     only real hardware runs the SANE calls (verified manually, see the plan's
     checklist)."""
 
-    def __init__(self, *, color_mode: str = "color", resolution: int = DEFAULT_RESOLUTION_DPI):
+    def __init__(self, *, color_mode: str = "color", resolution: int = DEFAULT_RESOLUTION_DPI, area: str = "a4"):
         try:
             import sane
         except ImportError as e:
@@ -260,11 +261,13 @@ class PySaneFlatbed:
             self._dev.source = "Flatbed"
             self._dev.mode = SANE_MODES[color_mode]
             self._dev.resolution = resolution
-            # The scan area is set to A4 (pixma's tl-x/tl-y/br-x/br-y, in mm;
-            # top-left stays 0): the driver's default is the whole glass,
-            # 216 x 297 mm, 6 mm wider than A4 and outside snap.py's 5 mm.
-            self._dev.br_x = A4_WIDTH_MM
-            self._dev.br_y = A4_HEIGHT_MM
+            # The scan area (pixma's br-x/br-y, in mm; the top-left stays at 0,
+            # the glass's corner mark): the driver's default is the whole glass,
+            # 216 x 297 mm. A4 gives a 620 x 877 px image at 75 dpi (verified on
+            # the real scanner); a photo's area keeps the scan small and fast.
+            width_mm, height_mm, _ = AREAS[area]
+            self._dev.br_x = width_mm
+            self._dev.br_y = height_mm
         except Exception as e:
             raise ScannerSetupError(f"The scanner refused a setting: {e}") from e
 

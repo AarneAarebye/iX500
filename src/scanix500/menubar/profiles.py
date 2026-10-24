@@ -22,6 +22,8 @@ class Profile:
     resolution: int = 300
     keep_blank_pages: bool = False
     scanner: str = IX500_ID
+    format: str = "pdf"
+    area: str = "a4"
 
 
 def default_profiles_path() -> Path:

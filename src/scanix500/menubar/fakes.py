@@ -5,15 +5,18 @@ iX500. Ported from that repo's reference helper (MIT). Testing only."""
 from __future__ import annotations
 
 import base64
+import io
 import secrets
 import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
 
+from PIL import Image
+
 from scanix500.menubar.bridge import ScanBusyError
 from scanix500.menubar.pairing import PairingError
-from scanix500.menubar.protocol_v2 import EMPTY_FEEDER_MESSAGE, ProtocolError, error_body, pages_message
+from scanix500.menubar.protocol_v2 import EMPTY_FEEDER_MESSAGE, ProtocolError, error_body, images_message, pages_message
 
 FAKE_PAIRING_CODE = "000000"
 
@@ -32,6 +35,8 @@ FAKE_SCANNERS = [
     _entry("fake:offline", "Fake Offline Scanner", ["flatbed"]),
     _entry("fake:empty", "Fake Empty Feeder", ["feeder"]),
     {**_entry("fake:ocr", "Fake OCR Scanner", ["flatbed"]), "ocr": {"languages": ["deu", "eng"]}},
+    {**_entry("fake:photo", "Fake Photo Scanner", ["flatbed"]), "resolutions": [150, 300, 600, 1200],
+     "formats": ["pdf", "jpeg", "png"], "areas": ["a4", "10x15"]},
 ]
 
 
@@ -63,6 +68,8 @@ def simulate(scanner: dict, settings: dict) -> tuple[list[list[str]], bool, str]
         time.sleep(b.delay)
     if b.empty:
         raise ProtocolError(500, EMPTY_FEEDER_MESSAGE)
+    if settings.get("format", "pdf") != "pdf":
+        return [["Flatbed page 1"]], False, images_message(1)
 
     if settings["source"] == "flatbed":
         pages = ["Flatbed page 1"]
@@ -134,6 +141,13 @@ def make_pdf(page_texts: list[str]) -> bytes:
     return bytes(out)
 
 
+def make_image(fmt: str) -> bytes:
+    """A tiny valid 8 x 8 JPEG or PNG (the fake photo scanner's scan)."""
+    out = io.BytesIO()
+    Image.new("L", (8, 8), 200).save(out, "JPEG" if fmt == "jpeg" else "PNG")
+    return out.getvalue()
+
+
 class FakeOcrJobs:
     """In-memory background OCR jobs: serial, each ready `delay` seconds after
     the previous one, deleted on fetch, dropped after a week."""
@@ -189,6 +203,12 @@ class FakeBackend:
         finally:
             self._lock.release()
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        fmt = settings.get("format", "pdf")
+        if fmt != "pdf":
+            extension = "jpg" if fmt == "jpeg" else "png"
+            entry = {"name": f"scan_{stamp}.{extension}", "pages": 1,
+                     "data": base64.b64encode(make_image(fmt)).decode("ascii")}
+            return 200, {"ok": True, "partial": False, "message": message, "files": [entry]}
         files = []
         for i, pages in enumerate(documents, start=1):
             name = f"scan_{stamp}.pdf" if len(documents) == 1 else f"scan_{stamp}_{i}.pdf"
