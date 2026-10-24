@@ -550,8 +550,8 @@ and no query string); the contract is dossiary-scan-helper's `PROTOCOL.md`.
 - Version 2 error bodies carry the message under both `message` and `error`,
   so Dossiary 1.43 shows them too.
 - `scripts/run-conformance.sh [path to dossiary-scan-helper]` runs that
-  repo's conformance suite against `scanix500-bridge --fake-scanners` (eight
-  fake scanners, pairing code `000000`, testing only; 51 tests pass).
+  repo's conformance suite against `scanix500-bridge --fake-scanners` (nine
+  fake scanners, pairing code `000000`, testing only; 58 tests pass).
 - Pages are no longer straightened or cropped by the scanner driver:
   `swdeskew` rotated a straight-fed, folded sheet by about 20°, and
   `swcrop` cut text off a letter's sides. ocrmypdf's `--deskew` straightens

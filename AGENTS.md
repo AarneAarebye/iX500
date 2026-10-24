@@ -107,7 +107,7 @@ TDD steps.
   (untouched). If a page ever loses content at a side, check those
   thresholds against the real scan before changing anything else.
 - **CanoScan 8800F (0.8.0)** -- spec `docs/superpowers/specs/2026-10-24-canoscan-8800f-flatbed-design.md`, plan `docs/superpowers/plans/2026-10-24-canoscan-8800f-flatbed.md`. A second scanner: flatbed, one A4 page per scan, SANE's `pixma` backend (`PySaneFlatbed`), listed as `sane:canoscan-8800f`. The scanner choice travels `POST /scan` -> `Profile.scanner` -> CLI `--scanner`. Its pages skip trim, snap and the blank filter (white lid, one page). Its buttons work on the Mac only (`pixma_button_overrides`: SANE's `target` option is the pressed button's number, table in the spec; COLOR/BLACK & WHITE/CUSTOM start a scan); on the server they do nothing (its `ButtonWatcher` polls only the iX500, whose button pairs computers). Photos are 0.9.0 (below); film is a later sub-project.
-- **Photos (0.9.0)** -- spec `docs/superpowers/specs/2026-10-24-photos-protocol-and-8800f-design.md`, plan `docs/superpowers/plans/2026-10-24-photos-ix500.md`; the protocol text and conformance tests are in dossiary-scan-helper (plan `docs/superpowers/plans/2026-10-24-photos-protocol.md` there). The 8800F's entry has `formats` (pdf/jpeg/png), `areas` (a4, a5, a6, 10x15, 13x18) and 1200 dpi; `format`/`area` travel `POST /scan` -> `Profile` -> CLI `--format`/`--area`; `PySaneFlatbed(area=...)` sets br-x/br-y; `images.py` writes the JPEG (quality 92) or PNG (1-bit for bw) with the dpi embedded. `protocol_v2.validate` refuses (422) a format or area the scanner doesn't offer, `ocr` with an image, jpeg with bw, and any scan over `scanners.MAX_PIXELS` (100 megapixels, inclusive; sized for the Pi's 3.4 GB: peak is about three times the raw size). `fake:photo` serves the conformance suite. The macOS helper and Dossiary don't pass the new fields yet.
+- **Photos (0.9.0)** -- spec `docs/superpowers/specs/2026-10-24-photos-protocol-and-8800f-design.md`, plan `docs/superpowers/plans/2026-10-24-photos-ix500.md`; the protocol text and conformance tests are in dossiary-scan-helper (plan `docs/superpowers/plans/2026-10-24-photos-protocol.md` there). The 8800F's entry has `formats` (pdf/jpeg/png), `areas` (a4, a5, a6, 10x15, 13x18) and 1200 dpi; `format`/`area` travel `POST /scan` -> `Profile` -> CLI `--format`/`--area`; `PySaneFlatbed(area=...)` sets br-x/br-y; `images.py` writes the JPEG (quality 92) or PNG (1-bit for bw) with the dpi embedded. `protocol_v2.validate` refuses (422) a format or area the scanner doesn't offer, `ocr` with an image, jpeg with bw, and any scan over `scanners.MAX_PIXELS` (100 megapixels, inclusive; sized for the Pi's 3.4 GB: peak is about three times the raw size). `fake:photo` serves the conformance suite. The macOS helper (0.5.0, local flatbeds and the Pi's scanners) and Dossiary (1.54.0, the scan dialog's Format and Paper size) pass the new fields.
 - **`start-menubar.sh` / `stop-menubar.sh`** start or stop the menu bar
   app. Stop unloads the LaunchAgent instead of killing the process, since
   its `KeepAlive` would restart a killed app.
@@ -154,10 +154,10 @@ TDD steps.
   even almost everywhere and was once trimmed to 5 pixels, which then no
   longer looked blank and ended up in the PDF.
   `keep_blank_pages` serves split-only (split on blank pages without skipping
-  them). `fakes.py` (`FakeBackend`, `FakePairing`: eight scanners, code
+  them). `fakes.py` (`FakeBackend`, `FakePairing`: nine scanners, code
   `000000`) and `bridge_main.py` (`scanix500-bridge --fake-scanners`) exist
   only so `scripts/run-conformance.sh` can run dossiary-scan-helper's
-  conformance suite (51 tests) against the bridge.
+  conformance suite (58 tests) against the bridge.
 
 - **`scanix500.server` is the headless network server** (spec
   `docs/superpowers/specs/2026-10-17-pi-scan-server-design.md`). It reuses
