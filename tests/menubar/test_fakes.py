@@ -7,7 +7,7 @@ import io
 from scanix500.menubar.bridge import ScanBusyError
 from scanix500.menubar.fakes import FAKE_PAIRING_CODE, FAKE_SCANNERS, FakeBackend, FakePairing, make_pdf
 from scanix500.menubar.pairing import PairingError
-from scanix500.menubar.protocol_v2 import validate
+from scanix500.menubar.protocol_v2 import ProtocolError, validate
 
 
 def _scan(scanner_id, **fields):
@@ -69,9 +69,40 @@ def test_fake_pairing():
 
 def test_fake_ocr_scanner_and_job():
     backend = FakeBackend()
-    assert [s["id"] for s in backend.scanners()][-1] == "fake:ocr"
+    assert [s["id"] for s in backend.scanners()][7] == "fake:ocr"
     scanner, settings = validate({"scanner": "fake:ocr", "ocr": True}, backend.scanners())
     status, body = backend.scan(scanner, settings)
     f = body["files"][0]
     assert b"Flatbed page 1" not in base64.b64decode(f["data"])
     assert backend.ocr_job(f["ocrJob"])[0] == 202
+
+
+def test_fake_photo_scanner_offers_images_and_areas():
+    entry = next(s for s in FakeBackend().scanners() if s["id"] == "fake:photo")
+    assert entry["sources"] == ["flatbed"] and entry["duplex"] is False
+    assert entry["formats"] == ["pdf", "jpeg", "png"]
+    assert entry["areas"] == ["a4", "10x15"]
+    assert entry["resolutions"] == [150, 300, 600, 1200]
+    assert "ocr" not in entry
+
+
+@pytest.mark.parametrize("fmt, signature, suffix", [("jpeg", b"\xff\xd8\xff", ".jpg"), ("png", b"\x89PNG", ".png")])
+def test_fake_photo_returns_one_image(fmt, signature, suffix):
+    status, body = _scan("fake:photo", format=fmt, area="10x15", resolution=600)
+    assert status == 200 and body["ok"] is True and body["message"] == "1 image scanned."
+    (f,) = body["files"]
+    assert f["pages"] == 1 and f["name"].endswith(suffix) and "ocrJob" not in f
+    assert base64.b64decode(f["data"]).startswith(signature)
+
+
+def test_fake_photo_without_a_format_is_a_pdf():
+    status, body = _scan("fake:photo")
+    assert status == 200 and body["files"][0]["name"].endswith(".pdf")
+    assert base64.b64decode(body["files"][0]["data"]).startswith(b"%PDF")
+
+
+def test_fake_photo_refuses_a_too_large_scan():
+    backend = FakeBackend()
+    with pytest.raises(ProtocolError) as info:
+        validate({"scanner": "fake:photo", "area": "a4", "resolution": 1200}, backend.scanners())
+    assert info.value.status == 422

@@ -27,7 +27,7 @@ def test_defaults():
     scanner, settings = validate({"scanner": "sane:ix500"}, [IX500])
     assert scanner["id"] == "sane:ix500"
     assert settings == {"source": "feeder", "duplex": False, "colorMode": "color", "resolution": 300,
-                        "format": "pdf", "extras": {}, "ocr": False, "ocrLanguages": []}
+                        "format": "pdf", "area": None, "extras": {}, "ocr": False, "ocrLanguages": []}
 
 
 @pytest.mark.parametrize("body, status", [
@@ -167,3 +167,109 @@ def test_a_driver_failure_names_the_scanner():
     status, body = response_from_result(result, CANOSCAN_8800F_ID)
     assert (status, body["message"]) == (
         503, "The Canon CanoScan 8800F can't be used right now: Failed to open SANE device: busy")
+
+
+def _photo(**body):
+    from scanix500.scanners import CANOSCAN_8800F
+    return validate({"scanner": "sane:canoscan-8800f", **body}, [CANOSCAN_8800F])
+
+
+def test_the_8800f_defaults_are_pdf_and_a4():
+    _, settings = _photo()
+    assert (settings["format"], settings["area"]) == ("pdf", "a4")
+
+
+def test_the_ix500_has_no_area_and_stays_pdf():
+    from scanix500.scanners import IX500
+    _, settings = validate({"scanner": "sane:ix500"}, [IX500])
+    assert (settings["format"], settings["area"]) == ("pdf", None)
+
+
+def test_an_image_request_is_accepted():
+    _, settings = _photo(format="jpeg", area="10x15", resolution=1200)
+    assert (settings["format"], settings["area"], settings["resolution"]) == ("jpeg", "10x15", 1200)
+    _photo(format="png", colorMode="bw", area="a6")  # PNG can be 1-bit
+
+
+@pytest.mark.parametrize("body", [
+    {"format": "tiff"},
+    {"area": "letter"},
+    {"format": "jpeg", "colorMode": "bw"},
+    {"format": "jpeg", "ocr": True},
+    {"format": "png", "ocr": True},
+    {"area": "a4", "resolution": 1200},
+    {"format": "png", "area": "a4", "resolution": 1200},
+])
+def test_unsupported_image_requests_are_422(body):
+    with pytest.raises(ProtocolError) as info:
+        _photo(**body)
+    assert info.value.status == 422 and info.value.message
+
+
+def test_the_refusal_messages_say_what_to_change():
+    with pytest.raises(ProtocolError) as info:
+        _photo(area="a4", resolution=1200)
+    assert info.value.message == ("A4 at 1200 dpi is too large (139 megapixels; the limit is 100): "
+                                  "choose a smaller area or a lower resolution.")
+    with pytest.raises(ProtocolError) as info:
+        _photo(format="jpeg", colorMode="bw")
+    assert info.value.message == "JPEG can't be black and white; use PNG or PDF."
+    with pytest.raises(ProtocolError) as info:
+        _photo(format="jpeg", ocr=True)
+    assert "searchable PDF" in info.value.message
+
+
+def test_the_size_limit_is_inclusive(monkeypatch):
+    from scanix500.scanners import pixel_count
+    exact = pixel_count("10x15", 600)
+    monkeypatch.setattr("scanix500.menubar.protocol_v2.MAX_PIXELS", exact)
+    _photo(area="10x15", resolution=600)
+    monkeypatch.setattr("scanix500.menubar.protocol_v2.MAX_PIXELS", exact - 1)
+    with pytest.raises(ProtocolError) as info:
+        _photo(area="10x15", resolution=600)
+    assert info.value.status == 422 and "too large" in info.value.message
+
+
+def test_the_ix500_refuses_images_and_areas():
+    from scanix500.scanners import IX500
+    for body in ({"format": "jpeg"}, {"area": "a4"}):
+        with pytest.raises(ProtocolError) as info:
+            validate({"scanner": "sane:ix500", **body}, [IX500])
+        assert info.value.status == 422
+
+
+def test_a_wrong_area_type_is_400_before_any_422():
+    with pytest.raises(ProtocolError) as info:
+        _photo(area=5, format="jpeg", colorMode="bw")
+    assert info.value.status == 400
+
+
+def test_profile_for_carries_format_and_area():
+    settings = {"source": "flatbed", "duplex": False, "colorMode": "gray", "resolution": 600,
+                "format": "png", "area": "13x18", "extras": {}}
+    p = profile_for(settings, "/d", "sane:canoscan-8800f")
+    assert (p.format, p.area) == ("png", "13x18")
+    legacy = {k: v for k, v in settings.items() if k not in ("format", "area")}
+    p = profile_for(legacy, "/d")
+    assert (p.format, p.area) == ("pdf", "a4")
+
+
+def _image_file(tmp_path, name, fmt):
+    from PIL import Image
+    path = tmp_path / name
+    Image.new("RGB", (20, 20), "white").save(path, fmt)
+    return str(path)
+
+
+def test_image_results_answer_with_one_page_per_file_and_an_images_message(tmp_path):
+    one = ScanResult(True, False, "x", [_image_file(tmp_path, "scan_1.jpg", "JPEG")])
+    status, body = response_from_result(one)
+    assert status == 200 and body["message"] == "1 image scanned."
+    assert [(f["name"], f["pages"]) for f in body["files"]] == [("scan_1.jpg", 1)]
+    two = ScanResult(True, False, "x", [_image_file(tmp_path, "a.png", "PNG"), _image_file(tmp_path, "b.png", "PNG")])
+    assert response_from_result(two)[1]["message"] == "2 images scanned."
+
+
+def test_images_message():
+    from scanix500.menubar.protocol_v2 import images_message
+    assert images_message(1) == "1 image scanned." and images_message(3) == "3 images scanned."

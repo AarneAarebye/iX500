@@ -11,11 +11,14 @@ from pypdf import PdfReader
 
 from scanix500.menubar.profiles import Profile
 from scanix500.menubar.runner import ScanResult
-from scanix500.scanners import IX500, IX500_ID, get_scanner  # noqa: F401 - IX500 is re-exported
+from scanix500.scanners import AREAS, IX500, IX500_ID, MAX_PIXELS, get_scanner, pixel_count  # noqa: F401 - IX500 is re-exported
 
 EMPTY_FEEDER_MESSAGE = "No paper in the feeder."
 ALL_BLANK_MESSAGE = "Every page was blank, so no PDF was made."
 NOT_CONNECTED_MESSAGE = get_scanner(IX500_ID).not_connected_message
+
+
+IMAGE_SUFFIXES = (".jpg", ".png")
 
 
 class ProtocolError(Exception):
@@ -44,7 +47,7 @@ def validate(body: object, scanners: list[dict]) -> tuple[dict, dict]:
     if scanner is None:
         raise ProtocolError(404, f"No scanner with id “{scanner_id}”.")
 
-    for key in ("source", "colorMode", "format"):
+    for key in ("source", "colorMode", "format", "area"):
         if key in body and not isinstance(body[key], str):
             raise ProtocolError(400, f"“{key}” must be text.")
     if "resolution" in body and (not isinstance(body["resolution"], int) or isinstance(body["resolution"], bool)):
@@ -72,8 +75,17 @@ def validate(body: object, scanners: list[dict]) -> tuple[dict, dict]:
     if resolution not in scanner["resolutions"]:
         raise ProtocolError(422, f"{name} can't scan at {resolution} dpi.")
     fmt = body.get("format", "pdf")
-    if fmt != "pdf":
-        raise ProtocolError(422, f"Format “{fmt}” isn't supported; use pdf.")
+    formats = scanner.get("formats", ["pdf"])
+    if fmt not in formats:
+        raise ProtocolError(422, f"{name} can't make {fmt} files; it offers {', '.join(formats)}.")
+    areas = scanner.get("areas", [])
+    if "area" in body and not areas:
+        raise ProtocolError(422, f"{name} has no scan areas.")
+    area = body.get("area", areas[0] if areas else None)
+    if area is not None and area not in areas:
+        raise ProtocolError(422, f"{name} doesn't offer the area “{area}”.")
+    if fmt == "jpeg" and color_mode == "bw":
+        raise ProtocolError(422, "JPEG can't be black and white; use PNG or PDF.")
     duplex = body.get("duplex", False)
     if duplex and not (scanner["duplex"] and source == "feeder"):
         raise ProtocolError(422, f"{name} can't scan both sides from the {source}.")
@@ -82,6 +94,8 @@ def validate(body: object, scanners: list[dict]) -> tuple[dict, dict]:
             raise ProtocolError(422, f"{name} doesn't offer “{extra}”.")
 
     ocr = body.get("ocr", False)
+    if ocr and fmt != "pdf":
+        raise ProtocolError(422, "A searchable PDF can't be made from an image; scan to PDF instead.")
     offered = (scanner.get("ocr") or {}).get("languages", [])
     if ocr and not offered:
         raise ProtocolError(422, f"{name} can't make a searchable PDF.")
@@ -90,8 +104,15 @@ def validate(body: object, scanners: list[dict]) -> tuple[dict, dict]:
             if lang not in offered:
                 raise ProtocolError(422, f"{name} has no OCR language “{lang}”.")
 
+    if area is not None:
+        pixels = pixel_count(area, resolution)
+        if pixels > MAX_PIXELS:
+            raise ProtocolError(
+                422, f"{AREAS[area][2]} at {resolution} dpi is too large ({pixels / 1e6:.0f} megapixels; "
+                     f"the limit is {MAX_PIXELS // 1_000_000}): choose a smaller area or a lower resolution.")
+
     return scanner, {"source": source, "duplex": duplex, "colorMode": color_mode,
-                     "resolution": resolution, "format": fmt, "extras": dict(extras),
+                     "resolution": resolution, "format": fmt, "area": area, "extras": dict(extras),
                      "ocr": ocr, "ocrLanguages": list(dict.fromkeys(languages))}
 
 
@@ -116,13 +137,20 @@ def profile_for(settings: dict, destination: str, scanner: str = IX500_ID) -> Pr
         resolution=settings["resolution"],
         keep_blank_pages=split and not skip_blank,
         scanner=scanner,
+        format=settings.get("format", "pdf"),
+        area=settings.get("area") or "a4",
     )
+
+
+def images_message(count: int) -> str:
+    return "1 image scanned." if count == 1 else f"{count} images scanned."
 
 
 def _file_entry(path: str) -> dict | None:
     try:
         data = Path(path).read_bytes()
-        pages = len(PdfReader(path).pages)
+        is_image = Path(path).suffix.lower() in IMAGE_SUFFIXES
+        pages = 1 if is_image else len(PdfReader(path).pages)
     except Exception:  # noqa: BLE001 - an unreadable file is left out, not fatal
         return None
     return {"name": Path(path).name, "pages": pages, "data": base64.b64encode(data).decode("ascii")}
@@ -139,8 +167,11 @@ def response_from_result(result: ScanResult, scanner_id: str = IX500_ID) -> tupl
     files = [entry for entry in (_file_entry(p) for p in result.output_paths) if entry]
     if result.ok:
         if files:
-            total = sum(f["pages"] for f in files)
-            return 200, {"ok": True, "partial": False, "message": pages_message(total), "files": files}
+            if all(f["name"].lower().endswith(IMAGE_SUFFIXES) for f in files):
+                message = images_message(len(files))
+            else:
+                message = pages_message(sum(f["pages"] for f in files))
+            return 200, {"ok": True, "partial": False, "message": message, "files": files}
         if result.message == "No pages scanned.":
             return 500, error_body(EMPTY_FEEDER_MESSAGE)
         if result.message.startswith("All pages were blank"):
