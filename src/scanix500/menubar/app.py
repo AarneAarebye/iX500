@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import threading
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 import rumps
@@ -18,7 +19,7 @@ from scanix500.menubar.bridge_settings import (
     save_bridge_destination,
 )
 from scanix500.menubar.pairing import PairingStore, default_pairing_path
-from scanix500.menubar.button_watcher import button_pressed, resolve_device_name
+from scanix500.menubar.button_watcher import BUTTON_READERS, resolve_device_name
 from scanix500.menubar.profile_form import pick_folder, show_profile_form
 from scanix500.menubar.profiles import (
     HARDWARE_BUTTON_PROFILE_NAME,
@@ -65,7 +66,7 @@ class ScanixMenuBarApp(rumps.App):
         # device name is based on the unit's persistent serial number, not a
         # USB bus path, so it stays stable across reconnects. No invalidation
         # needed.
-        self._button_device_name: str | None = None
+        self._button_devices: dict[str, str | None] = {}
         self._ticks_since_resolve_attempt = 0
         self._button_timer = rumps.Timer(self._poll_button, 1.5)
         self._button_timer.start()
@@ -169,24 +170,31 @@ class ScanixMenuBarApp(rumps.App):
         return handler
 
     def _poll_button(self, _sender):
-        # Don't touch the device at all while a scan is running: run_scan
-        # spawns the scanix500 CLI as a subprocess that holds the device open
-        # for the whole scan, so polling it would mean repeated open attempts
-        # against a device another process is actively streaming from — for no
+        # Don't touch any device while a scan is running: run_scan spawns the
+        # scanix500 CLI as a subprocess that holds the device open for the
+        # whole scan, so polling would mean repeated open attempts against a
+        # device another process is actively streaming from -- for no
         # benefit, since _start_scan discards a press detected mid-scan anyway.
         if self._scanning:
             return
-        if self._button_device_name is None:
-            if self._ticks_since_resolve_attempt % RESOLVE_RETRY_TICKS == 0:
-                self._button_device_name = resolve_device_name()
-            self._ticks_since_resolve_attempt += 1
-            if self._button_device_name is None:
-                return
-        if not button_pressed(self._button_device_name):
+        retry = self._ticks_since_resolve_attempt % RESOLVE_RETRY_TICKS == 0
+        self._ticks_since_resolve_attempt += 1
+        for scanner_id, read_button in BUTTON_READERS.items():
+            device_name = self._button_devices.get(scanner_id)
+            if device_name is None:
+                # Resolving does sane.init() + get_devices() (see RESOLVE_RETRY_TICKS).
+                if not retry:
+                    continue
+                device_name = self._button_devices[scanner_id] = resolve_device_name(scanner_id)
+                if device_name is None:
+                    continue
+            overrides = read_button(device_name)
+            if overrides is None:
+                continue
+            profile = find_profile(self.profiles, HARDWARE_BUTTON_PROFILE_NAME)
+            if profile is not None:
+                self._start_scan(replace(profile, scanner=scanner_id, **overrides))
             return
-        profile = find_profile(self.profiles, HARDWARE_BUTTON_PROFILE_NAME)
-        if profile is not None:
-            self._start_scan(profile)
 
     def _run_scan_thread(self, profile: Profile, on_done: Callable[[ScanResult], None] | None = None):
         result = self._execute_scan(profile)

@@ -157,3 +157,80 @@ def test_forget_paired_browsers_only_on_confirm(tmp_path):
     with patch("scanix500.menubar.app.rumps.alert", return_value=1):
         app._forget_paired_browsers(None)
     assert not app.pairing.is_valid(token)
+
+
+def _poller_app(profile, started):
+    from scanix500.menubar.app import ScanixMenuBarApp
+
+    app = ScanixMenuBarApp.__new__(ScanixMenuBarApp)
+    app._scanning = False
+    app._button_devices = {}
+    app._ticks_since_resolve_attempt = 0
+    app.profiles = [profile]
+    app._start_scan = lambda p, on_done=None: started.append(p) or True
+    return app
+
+
+def _hardware_profile(**changes):
+    from scanix500.menubar.profiles import HARDWARE_BUTTON_PROFILE_NAME
+    return Profile(name=HARDWARE_BUTTON_PROFILE_NAME, destination="/tmp/scans", **changes)
+
+
+def test_poll_button_scans_with_the_scanner_and_mode_of_the_pressed_button():
+    from scanix500.menubar import app as app_module
+
+    started = []
+    app = _poller_app(_hardware_profile(), started)
+    readers = {"sane:ix500": lambda dev: None,
+               "sane:canoscan-8800f": lambda dev: {"color_mode": "bw"} if dev == "pixma:1" else None}
+    names = {"sane:ix500": "fujitsu:1", "sane:canoscan-8800f": "pixma:1"}
+    with patch.object(app_module, "BUTTON_READERS", readers), patch.object(
+        app_module, "resolve_device_name", side_effect=lambda sid: names[sid]
+    ):
+        app._poll_button(None)
+
+    assert [(p.scanner, p.color_mode, p.destination) for p in started] == [
+        ("sane:canoscan-8800f", "bw", "/tmp/scans")]
+
+
+def test_an_ix500_press_keeps_the_profiles_own_mode():
+    from scanix500.menubar import app as app_module
+
+    started = []
+    app = _poller_app(_hardware_profile(color_mode="gray"), started)
+    with patch.object(app_module, "BUTTON_READERS", {"sane:ix500": lambda dev: {}}), patch.object(
+        app_module, "resolve_device_name", return_value="fujitsu:1"
+    ):
+        app._poll_button(None)
+
+    assert [(p.scanner, p.color_mode) for p in started] == [("sane:ix500", "gray")]
+
+
+def test_poll_button_does_nothing_while_scanning_or_when_nothing_is_pressed():
+    from scanix500.menubar import app as app_module
+
+    started = []
+    app = _poller_app(_hardware_profile(), started)
+    readers = {"sane:ix500": lambda dev: {}}
+    with patch.object(app_module, "BUTTON_READERS", readers), patch.object(
+        app_module, "resolve_device_name", return_value="fujitsu:1"
+    ):
+        app._scanning = True
+        app._poll_button(None)
+        assert started == []
+        app._scanning = False
+        readers["sane:ix500"] = lambda dev: None
+        app._poll_button(None)
+        assert started == []
+
+
+def test_poll_button_retries_an_unresolved_scanner_only_every_nth_tick():
+    from scanix500.menubar import app as app_module
+
+    app = _poller_app(_hardware_profile(), [])
+    with patch.object(app_module, "BUTTON_READERS", {"sane:canoscan-8800f": lambda dev: None}), patch.object(
+        app_module, "resolve_device_name", return_value=None
+    ) as resolve:
+        for _ in range(app_module.RESOLVE_RETRY_TICKS + 1):
+            app._poll_button(None)
+    assert resolve.call_count == 2  # tick 0 and tick RESOLVE_RETRY_TICKS
