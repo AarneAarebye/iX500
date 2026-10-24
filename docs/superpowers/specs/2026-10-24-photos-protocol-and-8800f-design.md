@@ -132,6 +132,26 @@ conformant without any change until its own part.
   (PROTOCOL.md); check it holds through the helper and the Pi.
 - **JPEG/PNG dpi metadata** is read by viewers: check a scan reports its dpi.
 
+## Verified on the real 8800F (node-000, 2026-10-24, this branch's code run from a temporary copy)
+
+- **Areas:** a4, a5, a6, 10x15 and 13x18 at 150 dpi give exactly width_mm / 25.4 * 150 by
+  height_mm / 25.4 * 150 pixels (1240 x 1754, 874 x 1240, 620 x 874, 591 x 886, 768 x 1063),
+  the dpi embedded; a scan takes about 20 s whatever the area at 150 dpi.
+- **Origin:** a print against the glass's corner mark appears flush in the top-left of both the
+  full A4 scan and the `10x15` scan: (0, 0) is the corner mark.
+- **Formats:** PNG color (RGB), PNG gray (L), PNG black & white (1-bit, 62 KB at 10 x 15 cm and
+  300 dpi), JPEG color and gray, all with the dpi embedded.
+- **Memory and time** (peak RSS of the largest process; the Pi has 3.4 GB available, no swap
+  was used and `throttled` stayed 0x0): 13 x 18 cm at 1200 dpi (52 MP) as JPEG 76 s, 558 MB;
+  A5 at 1200 dpi (69 MP) as JPEG 81 s, 721 MB; as a color PNG 222 s, 721 MB, a file of 83 MB;
+  as a PDF with the default OCR 531 s, 781 MB (13 x 18 cm: 499 s, 604 MB). The peak is about
+  3.5 times the raw size for images, so the 100 MP limit is safe, and the largest allowed scan
+  is 69 MP. The server's response (file, base64 and JSON held at once, about 4 to 4.5 times the
+  file size, about 350 MB for the 83 MB PNG) is built after the scan process has exited.
+- **A 1200 dpi PDF with the default OCR takes about nine minutes on the Pi** (the request
+  blocks; clients must not set a timeout). A client that wants OCR should ask for it with
+  `ocr: true` (background OCR, the scan itself takes about 80 s). Not restricted.
+
 ## Testing
 
 Automated: validation (every 422 and the budget boundary exactly at and over 100 MP),
