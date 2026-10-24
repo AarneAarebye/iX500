@@ -7,9 +7,10 @@ from scanix500.bw import to_black_and_white
 from scanix500.blank_filter import filter_pages
 from scanix500.capture import PagePair, PySaneDevice, PySaneFlatbed, capture_pages
 from scanix500.errors import MultiFeedError, NoPagesScannedError, ScannerNotFoundError, ScannerSetupError
+from scanix500.images import EXTENSIONS, save_image
 from scanix500.pdf_builder import build_pdf
 from scanix500.router import compute_output_paths
-from scanix500.scanners import CANOSCAN_8800F_ID, IX500_ID, KNOWN_SCANNERS
+from scanix500.scanners import AREAS, CANOSCAN_8800F_ID, IX500_ID, KNOWN_SCANNERS
 from scanix500.snap import snap_to_standard_size
 from scanix500.trim import trim_background
 
@@ -28,16 +29,23 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                         help="keep blank pages (with --split-on-blank, a blank separator sheet is still dropped)")
     parser.add_argument("--scanner", choices=[s.id for s in KNOWN_SCANNERS], default=IX500_ID,
                         help="which scanner to use (the CanoScan 8800F scans one flatbed page)")
+    parser.add_argument("--format", choices=("pdf", "jpeg", "png"), default="pdf",
+                        help="the file type (the CanoScan 8800F can scan to JPEG or PNG)")
+    parser.add_argument("--area", choices=tuple(AREAS), default="a4",
+                        help="the scan area on the CanoScan 8800F's glass")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     flatbed = args.scanner == CANOSCAN_8800F_ID
+    if args.format != "pdf" and not flatbed:
+        print("Scan failed: only the CanoScan 8800F makes images; the iX500 scans to PDF.", file=sys.stderr)
+        return 1
 
     try:
         if flatbed:
-            device = PySaneFlatbed(color_mode=args.mode, resolution=args.resolution)
+            device = PySaneFlatbed(color_mode=args.mode, resolution=args.resolution, area=args.area)
             pages = capture_pages(device, duplex=False)
         else:
             device = PySaneDevice(duplex=not args.simplex, color_mode=args.mode, resolution=args.resolution)
@@ -113,11 +121,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.mode == "bw":
         partitions = [[to_black_and_white(img) for img in images] for images in partitions]
 
-    output_paths = compute_output_paths(args.destination, len(partitions))
+    extension = EXTENSIONS.get(args.format, "pdf")
+    output_paths = compute_output_paths(args.destination, len(partitions), extension=extension)
     try:
         args.destination.mkdir(parents=True, exist_ok=True)
         for images, path in zip(partitions, output_paths):
-            build_pdf(images, path, ocr=not args.skip_ocr)
+            if args.format == "pdf":
+                build_pdf(images, path, ocr=not args.skip_ocr)
+            else:
+                save_image(images[0], path, args.format, args.resolution)
             print(path)
     except OSError as e:
         print(
