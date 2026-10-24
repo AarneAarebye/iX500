@@ -108,6 +108,10 @@ def _build_argv(profile: Profile) -> list[str]:
         argv.append("--keep-blank-pages")
     if profile.scanner != IX500_ID:
         argv += ["--scanner", profile.scanner]
+    if profile.format != "pdf":
+        argv += ["--format", profile.format]
+    if profile.area != "a4":
+        argv += ["--area", profile.area]
     return argv
 
 

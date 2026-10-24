@@ -199,3 +199,17 @@ def test_profile_scanner_defaults_to_the_ix500_and_old_files_still_load(tmp_path
 
     save_profiles(path, [Profile(name="Flat", destination="/d", scanner="sane:canoscan-8800f")])
     assert load_profiles(path)[0].scanner == "sane:canoscan-8800f"
+
+
+def test_profile_format_and_area_default_and_old_files_still_load(tmp_path):
+    import json
+    from scanix500.menubar.profiles import load_profiles, save_profiles
+
+    path = tmp_path / "profiles.json"
+    path.write_text(json.dumps([{"name": "Old", "destination": "/d", "scanner": "sane:ix500"}]))
+    loaded = load_profiles(path)
+    assert (loaded[0].format, loaded[0].area) == ("pdf", "a4")
+
+    save_profiles(path, [Profile(name="Photo", destination="/d", format="jpeg", area="10x15")])
+    again = load_profiles(path)[0]
+    assert (again.format, again.area) == ("jpeg", "10x15")

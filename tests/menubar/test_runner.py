@@ -226,3 +226,14 @@ def test_build_argv_names_the_scanner_only_when_it_is_not_the_ix500():
     assert "--scanner" not in _build_argv(Profile(name="p", destination="/d"))
     argv = _build_argv(Profile(name="p", destination="/d", scanner="sane:canoscan-8800f", resolution=600))
     assert argv[1:] == ["/d", "--resolution", "600", "--scanner", "sane:canoscan-8800f"]
+
+
+def test_build_argv_names_format_and_area_only_when_they_are_not_the_defaults():
+    from scanix500.menubar.runner import _build_argv
+    default = _build_argv(Profile(name="p", destination="/d"))
+    assert "--format" not in default and "--area" not in default
+    argv = _build_argv(Profile(name="p", destination="/d", scanner="sane:canoscan-8800f", resolution=1200,
+                               format="jpeg", area="10x15"))
+    assert argv[1:] == ["/d", "--resolution", "1200", "--scanner", "sane:canoscan-8800f",
+                        "--format", "jpeg", "--area", "10x15"]
+    assert _build_argv(Profile(name="p", destination="/d", format="png"))[1:] == ["/d", "--format", "png"]
