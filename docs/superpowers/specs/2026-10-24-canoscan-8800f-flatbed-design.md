@@ -27,7 +27,8 @@ spec/plan cycle:
   its library contains the 8800F model entry. USB id `04a9:1901`.
 - Options: `--source Flatbed|Transparency Unit`, `--mode
   Color|Gray|Lineart|48 bits color|16 bits gray`, resolutions 75..4800,
-  scan area 216 x 297 mm (A4 and a little more), `--calibrate Once|Always|Never`.
+  scan area up to 216 x 297 mm (the driver's default, A4 and a little more;
+  the app sets it to A4, 210 x 297 mm), `--calibrate Once|Always|Never`.
 - The Mac has `sane-backends` 1.4.0 with `pixma` enabled.
 - `ioreg -p IOUSB` lists vendor/product ids without opening SANE.
 - `PROTOCOL.md` already allows `sources: ["flatbed"]`, several scanners in
@@ -72,7 +73,9 @@ the catalogue is still 404. The fake backends are unchanged.
   resolution, scans once, returns that one frame, then raises `StopIteration`.
   `multi_feed_detected()` is always `False`.
 - `capture_pages(device, duplex=False)` is reused unchanged.
-- The scan area is left at the driver default (the whole glass).
+- The scan area is set to A4, 210 x 297 mm (`br_x`/`br_y` after the
+  resolution; top-left stays 0). The driver's default, the whole glass
+  (216 x 297 mm), is 6 mm wider than A4, outside `snap.py`'s 5 mm tolerance.
 - The driver's calibration (`Once`) makes the first scan after a service
   restart slower; left at the default.
 - Errors map to the existing `ScannerNotFoundError` / `ScannerSetupError`.

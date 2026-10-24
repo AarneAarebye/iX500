@@ -256,11 +256,15 @@ class PySaneFlatbed:
 
         try:
             # pixma: "Set source before mode and resolution" -- setting the
-            # source resets both to their automatic values. The scan area is
-            # left at the driver's default, the whole glass (216 x 297 mm).
+            # source resets both to their automatic values.
             self._dev.source = "Flatbed"
             self._dev.mode = SANE_MODES[color_mode]
             self._dev.resolution = resolution
+            # The scan area is set to A4 (pixma's tl-x/tl-y/br-x/br-y, in mm;
+            # top-left stays 0): the driver's default is the whole glass,
+            # 216 x 297 mm, 6 mm wider than A4 and outside snap.py's 5 mm.
+            self._dev.br_x = A4_WIDTH_MM
+            self._dev.br_y = A4_HEIGHT_MM
         except Exception as e:
             raise ScannerSetupError(f"The scanner refused a setting: {e}") from e
 
