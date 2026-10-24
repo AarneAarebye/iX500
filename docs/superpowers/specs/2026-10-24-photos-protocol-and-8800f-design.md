@@ -76,7 +76,9 @@ entry is unchanged.
 **Fake scanner mode** (conformance suite): a new `fake:photo` scanner, flatbed,
 formats pdf/jpeg/png, areas a4/10x15, answering an image request with a tiny valid
 JPEG or PNG; the suite gains tests for each 422 above and for the response shape.
-The reference helper in `reference/` implements the same.
+The reference helper in `reference/` implements the same. The new conformance tests skip when a
+helper doesn't list `fake:photo` (as the OCR tests do for `fake:ocr`), so the macOS helper stays
+conformant without any change until its own part.
 
 ## Part 1b: this repo (scanix500)
 
@@ -99,6 +101,8 @@ The reference helper in `reference/` implements the same.
   `router.compute_output_paths` takes the file extension. The iX500 path refuses an
   image format (exit 1) as a second line of defence; validation never lets one reach
   it. No trim, snap or blank filter for flatbed pages (unchanged).
+- **Fake backend** (`menubar/fakes.py`): serves the optional `fake:photo` scanner for the conformance
+  suite (a tiny JPEG or PNG made with Pillow), last in the list.
 - **Response**: `protocol_v2._file_entry` returns `pages: 1` for an image instead of
   asking `PdfReader`; `response_from_result` words the message per file type.
 - **Unchanged**: the Mac menu bar app's own menu and buttons (the Hardware Button profile is
