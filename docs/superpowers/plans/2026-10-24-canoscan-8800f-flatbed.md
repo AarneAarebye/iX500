@@ -1415,3 +1415,4 @@ After tagging and installing the `.deb` (the user does this: `git tag v0.8.0`, p
 
 - [ ] The same scans through the menu bar app's bridge (`GET /scanners` lists both, scans work).
 - [ ] COLOR, BLACK & WHITE and CUSTOM start a scan (color, black & white, the profile's mode); COPY, PHOTO/FILM, E-MAIL and FINISH do nothing; the iX500's button still works with both attached; a press during a scan is ignored.
+- [ ] The menu bar stays responsive with the 8800F attached and with it unplugged.

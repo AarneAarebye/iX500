@@ -86,7 +86,7 @@ commands for that session.
 To run scanix500 from an installed copy rather than this checkout (so
 switching branches here doesn't change the scanner software in use):
 
-    scripts/install-app.sh v0.7.0
+    scripts/install-app.sh v0.8.0
 
 It installs that tag into `/Applications/Dossiary/scanix500/` (a new
 `venvs/<version>-<time>` folder, with `venv` pointing at it), points the
@@ -125,7 +125,8 @@ is not opened), so an unplugged scanner disappears from the picker.
   and FINISH do nothing. Feeder settings in that profile (both sides, split on
   blank pages) don't apply to the glass and are ignored.
 - **On `scanix500-server`** it appears in Dossiary Scan Helper like any scanner.
-  The server's button only pairs computers, for either scanner.
+  Its buttons do nothing there: the server's button (pairing computers) is
+  the iX500's only.
 - Its pages are not trimmed, snapped to a paper size or checked for blankness:
   the lid is white and a scan is one page. A smaller sheet leaves white margin.
 - Photos, higher resolutions and film are not supported yet.
@@ -532,8 +533,9 @@ and no query string); the contract is dossiary-scan-helper's `PROTOCOL.md`.
   (`deu+eng`) as part of the scan.
 - Older Dossiary releases keep working: a `POST /scan` with a query string is
   still a version 1 request, answered as before.
-- The iX500 is always listed in `/scanners`; the bridge doesn't probe the
-  scanner for that. With it unplugged, a scan answers `503`.
+- `/scanners` lists the known scanners that are plugged in, found on the USB
+  bus (`ioreg` on macOS, sysfs on Linux) without opening SANE. A scan for a
+  known scanner that is unplugged answers `503`; an unknown scanner id `404`.
 - Version 2 file entries are `{name, pages, data}` (see dossiary-scan-helper's
   `PROTOCOL.md`), unlike version 1's `{filename, content_base64}`.
 - Black & white is scanned as gray and then thresholded to 1-bit (at 160).
