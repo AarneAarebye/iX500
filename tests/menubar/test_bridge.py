@@ -507,7 +507,7 @@ def test_health_is_version_2_and_keeps_the_service_name(v2_server):
     base, _ = v2_server
     status, body, headers = _request(base, "GET", "/health")
     assert status == 200
-    assert body == {"ok": True, "helper": "scanix500", "version": "0.7.0", "protocol": 2,
+    assert body == {"ok": True, "helper": "scanix500", "version": "0.8.0", "protocol": 2,
                     "paired": True, "service": "scanix500-bridge"}
     assert headers["Content-Type"].startswith("application/json")
 
@@ -672,3 +672,55 @@ def test_offered_ocr_languages_are_the_installed_ones(tmp_path, monkeypatch):
     assert RealBackend(lambda: str(tmp_path), FakeScanTrigger()).scanners()[0]["ocr"]["languages"] == ["deu", "eng"]
     monkeypatch.setattr("scanix500.menubar.bridge.installed_ocr_languages", lambda: None)
     assert "fra" in RealBackend(lambda: str(tmp_path), FakeScanTrigger()).scanners()[0]["ocr"]["languages"]
+
+
+BOTH = {(0x04C5, 0x132B), (0x04A9, 0x1901)}
+ONLY_8800F = {(0x04A9, 0x1901)}
+
+
+def test_scanners_lists_what_is_plugged_in(v2_server, monkeypatch):
+    base, _ = v2_server
+    for ids, expected in [(BOTH, ["sane:ix500", "sane:canoscan-8800f"]), (ONLY_8800F, ["sane:canoscan-8800f"]), (set(), [])]:
+        monkeypatch.setattr("scanix500.scanners.usb_ids", lambda ids=ids: ids)
+        status, body, _ = _request(base, "GET", "/scanners")
+        assert status == 200 and [s["id"] for s in body["scanners"]] == expected
+
+
+def test_scan_on_the_8800f_runs_a_profile_for_it(v2_server, monkeypatch):
+    base, trigger = v2_server
+    monkeypatch.setattr("scanix500.scanners.usb_ids", lambda: BOTH)
+    _request(base, "POST", "/scan", {"scanner": "sane:canoscan-8800f", "colorMode": "gray", "resolution": 150})
+    p = trigger.called_with
+    assert (p.scanner, p.duplex, p.color_mode, p.resolution) == ("sane:canoscan-8800f", False, "gray", 150)
+
+
+def test_8800f_refuses_feeder_extras_and_duplex(v2_server, monkeypatch):
+    base, _ = v2_server
+    monkeypatch.setattr("scanix500.scanners.usb_ids", lambda: BOTH)
+    status, body, _ = _request(base, "POST", "/scan", {"scanner": "sane:canoscan-8800f", "extras": {"splitOnBlank": True}})
+    assert status == 422
+    status, body, _ = _request(base, "POST", "/scan", {"scanner": "sane:canoscan-8800f", "duplex": True})
+    assert status == 422
+    status, body, _ = _request(base, "POST", "/scan", {"scanner": "sane:canoscan-8800f", "source": "feeder"})
+    assert status == 422
+
+
+def test_scan_on_an_unplugged_known_scanner_is_503(v2_server):
+    base, trigger = v2_server  # only the iX500 is attached (conftest)
+    status, body, _ = _request(base, "POST", "/scan", {"scanner": "sane:canoscan-8800f"})
+    assert status == 503 and body["message"].startswith("The Canon CanoScan 8800F isn't connected")
+    assert body["error"] == body["message"] and trigger.called_with is None
+
+
+def test_unplugged_known_scanner_is_still_validated_first(v2_server):
+    base, _ = v2_server
+    status, _, _ = _request(base, "POST", "/scan", {"scanner": "sane:canoscan-8800f", "resolution": 1200})
+    assert status == 422
+    status, _, _ = _request(base, "POST", "/scan", {"scanner": "sane:canoscan-8800f", "duplex": "yes"})
+    assert status == 400
+
+
+def test_scan_on_an_unknown_scanner_is_still_404(v2_server):
+    base, _ = v2_server
+    status, _, _ = _request(base, "POST", "/scan", {"scanner": "sane:nope"})
+    assert status == 404

@@ -219,3 +219,10 @@ def test_a_stop_before_any_sheet_is_a_plain_failure():
     result = parse_scan_output(1, "", SANE_NOISE + "Scan failed: the scanner stopped at sheet 1 (Document feeder jammed).\n")
     assert not result.ok and not result.partial
     assert result.message == "Scan failed: the scanner stopped at sheet 1 (Document feeder jammed)."
+
+
+def test_build_argv_names_the_scanner_only_when_it_is_not_the_ix500():
+    from scanix500.menubar.runner import _build_argv
+    assert "--scanner" not in _build_argv(Profile(name="p", destination="/d"))
+    argv = _build_argv(Profile(name="p", destination="/d", scanner="sane:canoscan-8800f", resolution=600))
+    assert argv[1:] == ["/d", "--resolution", "600", "--scanner", "sane:canoscan-8800f"]

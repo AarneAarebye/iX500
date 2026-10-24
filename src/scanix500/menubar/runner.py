@@ -9,6 +9,7 @@ from pathlib import Path
 
 from scanix500.i18n import t
 from scanix500.menubar.profiles import Profile
+from scanix500.scanners import IX500_ID
 
 _KNOWN_MESSAGES = {"No pages scanned.", "All pages were blank; no PDF written."}
 # With or without a timestamp, e.g. "[13:19:42.848668] [bjnp] …" or "[bjnp] …".
@@ -105,6 +106,8 @@ def _build_argv(profile: Profile) -> list[str]:
         argv += ["--resolution", str(profile.resolution)]
     if profile.keep_blank_pages:
         argv.append("--keep-blank-pages")
+    if profile.scanner != IX500_ID:
+        argv += ["--scanner", profile.scanner]
     return argv
 
 

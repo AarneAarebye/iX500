@@ -5,10 +5,11 @@ from pathlib import Path
 from scanix500 import __version__
 from scanix500.bw import to_black_and_white
 from scanix500.blank_filter import filter_pages
-from scanix500.capture import PagePair, PySaneDevice, capture_pages
+from scanix500.capture import PagePair, PySaneDevice, PySaneFlatbed, capture_pages
 from scanix500.errors import MultiFeedError, NoPagesScannedError, ScannerNotFoundError, ScannerSetupError
 from scanix500.pdf_builder import build_pdf
 from scanix500.router import compute_output_paths
+from scanix500.scanners import CANOSCAN_8800F_ID, IX500_ID, KNOWN_SCANNERS
 from scanix500.snap import snap_to_standard_size
 from scanix500.trim import trim_background
 
@@ -25,15 +26,22 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--resolution", type=int, default=300)
     parser.add_argument("--keep-blank-pages", action="store_true",
                         help="keep blank pages (with --split-on-blank, a blank separator sheet is still dropped)")
+    parser.add_argument("--scanner", choices=[s.id for s in KNOWN_SCANNERS], default=IX500_ID,
+                        help="which scanner to use (the CanoScan 8800F scans one flatbed page)")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    flatbed = args.scanner == CANOSCAN_8800F_ID
 
     try:
-        device = PySaneDevice(duplex=not args.simplex, color_mode=args.mode, resolution=args.resolution)
-        pages = capture_pages(device, duplex=not args.simplex)
+        if flatbed:
+            device = PySaneFlatbed(color_mode=args.mode, resolution=args.resolution)
+            pages = capture_pages(device, duplex=False)
+        else:
+            device = PySaneDevice(duplex=not args.simplex, color_mode=args.mode, resolution=args.resolution)
+            pages = capture_pages(device, duplex=not args.simplex)
     except ScannerNotFoundError as e:
         print(f"Scanner not found: {e}", file=sys.stderr)
         return 1
@@ -75,22 +83,28 @@ def main(argv: list[str] | None = None) -> int:
     else:
         exit_code = 0
 
-    # Trim the scanner's background from the sides first, so an A5 sheet
-    # comes out at A5 width and the blank check only sees the paper; then a
-    # page within a few mm of a standard size gets exactly that size.
-    def fit(image):
-        return snap_to_standard_size(trim_background(image))
-
-    pages = [PagePair(fit(p.front), None if p.back is None else fit(p.back)) for p in pages]
-
-    if args.skip_blank_filter:
-        partitions = [
-            [img for pair in pages for img in (pair.front, pair.back) if img is not None]
-        ]
+    if flatbed:
+        # One page straight from the glass: the lid is white, so there's no
+        # background to trim, the A4 scan area is the page, and one page
+        # needs no blank check.
+        partitions = [[pair.front for pair in pages]]
     else:
-        partitions = filter_pages(
-            pages, split_on_blank=args.split_on_blank, drop_blank_pages=not args.keep_blank_pages
-        )
+        # Trim the scanner's background from the sides first, so an A5 sheet
+        # comes out at A5 width and the blank check only sees the paper; then a
+        # page within a few mm of a standard size gets exactly that size.
+        def fit(image):
+            return snap_to_standard_size(trim_background(image))
+
+        pages = [PagePair(fit(p.front), None if p.back is None else fit(p.back)) for p in pages]
+
+        if args.skip_blank_filter:
+            partitions = [
+                [img for pair in pages for img in (pair.front, pair.back) if img is not None]
+            ]
+        else:
+            partitions = filter_pages(
+                pages, split_on_blank=args.split_on_blank, drop_blank_pages=not args.keep_blank_pages
+            )
 
     if not partitions:
         print("All pages were blank; no PDF written.")

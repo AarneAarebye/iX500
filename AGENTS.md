@@ -106,17 +106,22 @@ TDD steps.
   real A5 sheet (148x210 mm out after snapping) and a smooth-paper A4 letter
   (untouched). If a page ever loses content at a side, check those
   thresholds against the real scan before changing anything else.
+- **CanoScan 8800F (0.8.0)** -- spec `docs/superpowers/specs/2026-10-24-canoscan-8800f-flatbed-design.md`, plan `docs/superpowers/plans/2026-10-24-canoscan-8800f-flatbed.md`. A second scanner: flatbed, one A4 page per scan, SANE's `pixma` backend (`PySaneFlatbed`), listed as `sane:canoscan-8800f`. The scanner choice travels `POST /scan` -> `Profile.scanner` -> CLI `--scanner`. Its pages skip trim, snap and the blank filter (white lid, one page). Its buttons work on the Mac only (`pixma_button_overrides`: SANE's `target` option is the pressed button's number, table in the spec; COLOR/BLACK & WHITE/CUSTOM start a scan); on the server they do nothing (its `ButtonWatcher` polls only the iX500, whose button pairs computers). Photos (JPEG/TIFF) and film are later sub-projects.
 - **`start-menubar.sh` / `stop-menubar.sh`** start or stop the menu bar
   app. Stop unloads the LaunchAgent instead of killing the process, since
   its `KeepAlive` would restart a killed app.
 - **Protocol version 2 (0.5.0)** (`menubar/protocol_v2.py`, `bridge.py`,
   `bw.py`, `fakes.py`, `bridge_main.py`). `protocol_v2.py` is pure: the
-  iX500's one fixed `/scanners` entry (`sane:ix500`, feeder, duplex, color/
-  gray/bw, 300/600 dpi, splitOnBlank/skipBlankPages), request validation, and
-  the mapping of a scan result to a response. **The iX500 is always listed
-  and never probed**: opening SANE from the HTTP thread would fight a scan or
-  the Scan button, so an unplugged scanner shows up only as a `503` on
-  `POST /scan`. Error bodies carry the message under both `message` and
+  scanner catalogue's `/scanners` entries (`scanners.py`: the iX500,
+  `sane:ix500`, feeder, duplex, color/gray/bw, 300/600 dpi,
+  splitOnBlank/skipBlankPages; and the CanoScan 8800F, `sane:canoscan-8800f`,
+  flatbed), request validation, and
+  the mapping of a scan result to a response. **`GET /scanners` lists what is
+  plugged in, found on the USB bus (`scanners.py`: sysfs on Linux, `ioreg` on
+  macOS) and never by opening SANE**: opening SANE from the HTTP thread would
+  fight a scan or the Scan button. A known scanner that isn't plugged in is
+  validated against its catalogue entry and then refused with `503` on
+  `POST /scan`; an unknown id is `404`. Error bodies carry the message under both `message` and
   `error` (Dossiary 1.43 reads `error`). `bridge.py`'s check order: Origin 403
   -> OPTIONS 204 -> unknown path 404 / wrong method 405 with `Allow` ->
   `/scanners` and `/scan` without a valid token 401 -> endpoint checks. **A

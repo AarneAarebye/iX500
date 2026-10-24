@@ -37,6 +37,16 @@ def find_fujitsu_device(devices: list[tuple]) -> str | None:
     return None
 
 
+def find_canoscan_device(devices: list[tuple]) -> str | None:
+    """Given the (name, vendor, model, type) tuples sane.get_devices()
+    returns, finds the CanoScan 8800F (SANE's pixma backend) and returns its
+    device name, or None if not found."""
+    for d in devices:
+        if d[0].startswith("pixma:") and "8800f" in d[2].lower():
+            return d[0]
+    return None
+
+
 def _reason(e: Exception) -> str:
     return str(e) or type(e).__name__
 
@@ -208,3 +218,72 @@ class PySaneDevice:
             return bool(self._dev.omr_df)
         except AttributeError:
             return False
+
+
+class PySaneFlatbed:
+    """The CanoScan 8800F's glass through python-sane (SANE's pixma
+    backend): one A4 page per scan, then StopIteration, so capture_pages(
+    duplex=False) returns one page. Imports `sane` lazily like PySaneDevice;
+    only real hardware runs the SANE calls (verified manually, see the plan's
+    checklist)."""
+
+    def __init__(self, *, color_mode: str = "color", resolution: int = DEFAULT_RESOLUTION_DPI):
+        try:
+            import sane
+        except ImportError as e:
+            raise ScannerNotFoundError(
+                "python-sane is not installed — see README for install instructions"
+            ) from e
+
+        try:
+            sane.init()
+        except Exception as e:
+            raise ScannerNotFoundError(f"Failed to initialise SANE: {e}") from e
+
+        try:
+            devices = sane.get_devices()
+        except Exception as e:
+            raise ScannerNotFoundError(f"Failed to enumerate SANE devices: {e}") from e
+
+        device_name = find_canoscan_device(devices)
+        if device_name is None:
+            raise ScannerNotFoundError("No CanoScan 8800F found via SANE pixma backend")
+
+        try:
+            self._dev = sane.open(device_name)
+        except Exception as e:
+            raise ScannerNotFoundError(f"Failed to open SANE device: {e}") from e
+
+        try:
+            # pixma: "Set source before mode and resolution" -- setting the
+            # source resets both to their automatic values.
+            self._dev.source = "Flatbed"
+            self._dev.mode = SANE_MODES[color_mode]
+            self._dev.resolution = resolution
+            # The scan area is set to A4 (pixma's tl-x/tl-y/br-x/br-y, in mm;
+            # top-left stays 0): the driver's default is the whole glass,
+            # 216 x 297 mm, 6 mm wider than A4 and outside snap.py's 5 mm.
+            self._dev.br_x = A4_WIDTH_MM
+            self._dev.br_y = A4_HEIGHT_MM
+        except Exception as e:
+            raise ScannerSetupError(f"The scanner refused a setting: {e}") from e
+
+        self._resolution = resolution
+        self._pending = False
+
+    def start(self) -> None:
+        self._pending = True
+
+    def read_frame(self):
+        if not self._pending:
+            raise StopIteration
+        self._pending = False
+        # scan() is start() + snap(); snap() alone never returns here.
+        frame = self._dev.scan()
+        # python-sane never sets .info["dpi"]; pdf_builder needs it for the
+        # PDF page geometry (see PySaneDevice.read_frame).
+        frame.info["dpi"] = (self._resolution, self._resolution)
+        return frame
+
+    def multi_feed_detected(self) -> bool:
+        return False

@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from scanix500.i18n import t
+from scanix500.scanners import IX500_ID
 
 
 @dataclass
@@ -20,6 +21,7 @@ class Profile:
     color_mode: str = "color"
     resolution: int = 300
     keep_blank_pages: bool = False
+    scanner: str = IX500_ID
 
 
 def default_profiles_path() -> Path:

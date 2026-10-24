@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import threading
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 import rumps
@@ -18,7 +19,7 @@ from scanix500.menubar.bridge_settings import (
     save_bridge_destination,
 )
 from scanix500.menubar.pairing import PairingStore, default_pairing_path
-from scanix500.menubar.button_watcher import button_pressed, resolve_device_name
+from scanix500.menubar.button_watcher import BUTTON_READERS, resolve_device_name
 from scanix500.menubar.profile_form import pick_folder, show_profile_form
 from scanix500.menubar.profiles import (
     HARDWARE_BUTTON_PROFILE_NAME,
@@ -32,17 +33,21 @@ from scanix500.menubar.profiles import (
     save_profiles,
 )
 from scanix500.menubar.runner import ScanResult, display_message, notification_title, run_scan
+from scanix500.scanners import get_scanner, usb_ids
 
 IDLE_TITLE = "📄"
 SCANNING_TITLE = "📄…"
 
-# While no device name is resolved yet, only retry resolve_device_name()
-# every Nth poll tick (20 * 1.5s ≈ 30s). That call does sane.init() +
-# sane.get_devices(), which probes every backend and commonly blocks for
-# seconds on the main thread — orders of magnitude more expensive than the
-# ~5-20ms open/close that button_pressed() does, which is what the 1.5s
-# poll interval was actually budgeted for. Retrying it every tick with no
-# scanner present freezes the menu bar UI roughly continuously.
+# The Scan buttons are polled every 1.5 s, but nothing slow runs on the main
+# thread: _poll_button only starts one background read (_button_read_thread)
+# and returns, and a press comes back via AppHelper.callAfter. The reads are
+# slow -- opening the 8800F takes 0.6-0.8 s (pixma re-runs its device search,
+# including the BJNP network probe, on every open), and sane.get_devices()
+# takes ~4 s on this Mac -- so they must never run on the main thread.
+# A scanner whose USB id usb_ids() doesn't list is never opened. While a
+# plugged-in scanner's device name is not resolved yet, resolve_device_name()
+# (sane.init() + get_devices()) is only retried every Nth read (20 * 1.5 s
+# ≈ 30 s), so an unresolvable scanner doesn't keep SANE busy.
 RESOLVE_RETRY_TICKS = 20
 
 
@@ -60,13 +65,13 @@ class ScanixMenuBarApp(rumps.App):
         # See _rebuild_menu's comment on self._app_started.
         self._app_started = False
         self._rebuild_menu()
-        # Resolved once and cached indefinitely — confirmed empirically (unplug/
-        # replug test against real hardware, 2026-09-14) that this backend's
-        # device name is based on the unit's persistent serial number, not a
-        # USB bus path, so it stays stable across reconnects. No invalidation
-        # needed.
-        self._button_device_name: str | None = None
+        # Scanner id -> SANE device name, cached while the scanner's USB id is
+        # present and forgotten as soon as it is unplugged (see _read_buttons),
+        # so a re-plugged scanner is resolved again. Only the button-read
+        # worker touches it, and only one worker runs at a time.
+        self._button_devices: dict[str, str | None] = {}
         self._ticks_since_resolve_attempt = 0
+        self._button_reading = False  # a button-read worker is running (main thread only)
         self._button_timer = rumps.Timer(self._poll_button, 1.5)
         self._button_timer.start()
         # Embedded HTTP bridge (see bridge.py) -- lets an external caller
@@ -143,7 +148,7 @@ class ScanixMenuBarApp(rumps.App):
         """Returns True if a scan was actually started, False if one was
         already in progress (in which case on_done is never called). The
         two pre-existing callers (_make_scan_handler's menu-click handler,
-        _poll_button's hardware-button path) both ignore the return value
+        _on_buttons_read's hardware-button path) both ignore the return value
         and never pass on_done -- unchanged behavior for them. trigger()
         (below) is the one new caller that uses both."""
         if self._scanning:
@@ -169,24 +174,65 @@ class ScanixMenuBarApp(rumps.App):
         return handler
 
     def _poll_button(self, _sender):
-        # Don't touch the device at all while a scan is running: run_scan
-        # spawns the scanix500 CLI as a subprocess that holds the device open
-        # for the whole scan, so polling it would mean repeated open attempts
-        # against a device another process is actively streaming from — for no
-        # benefit, since _start_scan discards a press detected mid-scan anyway.
-        if self._scanning:
+        """rumps timer callback on the main thread: never does blocking work
+        itself, only starts a button-read worker if none runs and no scan does.
+
+        Don't touch any device while a scan is running: run_scan spawns the
+        scanix500 CLI as a subprocess that holds the device open for the
+        whole scan, so polling would mean repeated open attempts against a
+        device another process is actively streaming from -- for no
+        benefit, since _start_scan discards a press detected mid-scan anyway."""
+        if self._scanning or self._button_reading:
             return
-        if self._button_device_name is None:
-            if self._ticks_since_resolve_attempt % RESOLVE_RETRY_TICKS == 0:
-                self._button_device_name = resolve_device_name()
-            self._ticks_since_resolve_attempt += 1
-            if self._button_device_name is None:
-                return
-        if not button_pressed(self._button_device_name):
+        retry = self._ticks_since_resolve_attempt % RESOLVE_RETRY_TICKS == 0
+        self._ticks_since_resolve_attempt += 1
+        self._button_reading = True
+        threading.Thread(target=self._button_read_thread, args=(retry,), daemon=True).start()
+
+    def _button_read_thread(self, retry: bool):
+        hit = None
+        try:
+            hit = self._read_buttons(retry, usb_ids())
+        except Exception:  # noqa: BLE001 - must always report back, or polling stops for good
+            hit = None
+        finally:
+            AppHelper.callAfter(self._on_buttons_read, hit)
+
+    def _on_buttons_read(self, hit: tuple[str, dict] | None):
+        """Main thread: the worker is done; a press starts a scan through the
+        busy-guarded _start_scan, like a menu click."""
+        self._button_reading = False
+        if hit is None:
             return
+        scanner_id, overrides = hit
         profile = find_profile(self.profiles, HARDWARE_BUTTON_PROFILE_NAME)
         if profile is not None:
-            self._start_scan(profile)
+            self._start_scan(replace(profile, scanner=scanner_id, **overrides))
+
+    def _read_buttons(self, retry: bool, present: set[tuple[int, int]]) -> tuple[str, dict] | None:
+        """Reads every plugged-in scanner's buttons (blocking; worker thread).
+        Returns (scanner id, Profile overrides) for the first pressed scan
+        button, or None. A scanner whose USB id isn't in `present` is never
+        touched and its cached device name is forgotten; an unresolved one is
+        only resolved when `retry` is set (see RESOLVE_RETRY_TICKS)."""
+        for scanner_id, read_button in BUTTON_READERS.items():
+            known = get_scanner(scanner_id)
+            if known is None or known.usb_id not in present:
+                self._button_devices.pop(scanner_id, None)
+                continue
+            if self._scanning:  # a scan started meanwhile: leave the device to it
+                return None
+            device_name = self._button_devices.get(scanner_id)
+            if device_name is None:
+                if not retry:
+                    continue
+                device_name = self._button_devices[scanner_id] = resolve_device_name(scanner_id)
+                if device_name is None:
+                    continue
+            overrides = read_button(device_name)
+            if overrides is not None:
+                return scanner_id, overrides
+        return None
 
     def _run_scan_thread(self, profile: Profile, on_done: Callable[[ScanResult], None] | None = None):
         result = self._execute_scan(profile)

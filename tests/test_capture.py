@@ -131,3 +131,69 @@ def test_a_failed_read_keeps_the_driver_reason():
     with pytest.raises(MultiFeedError) as info:
         capture_pages(device)
     assert info.value.reason == "simulated read-time hardware fault"
+
+
+def test_find_canoscan_device_matches_the_pixma_8800f():
+    from scanix500.capture import find_canoscan_device
+    devices = [
+        ("fujitsu:ScanSnap iX500:1203900", "FUJITSU", "ScanSnap iX500", "scanner"),
+        ("pixma:04A91901", "CANON", "Canoscan 8800F", "multi-function peripheral"),
+    ]
+    assert find_canoscan_device(devices) == "pixma:04A91901"
+
+
+def test_find_canoscan_device_ignores_other_canon_scanners_and_other_backends():
+    from scanix500.capture import find_canoscan_device
+    devices = [
+        ("pixma:04A91234", "CANON", "Canoscan LiDE 400", "multi-function peripheral"),
+        ("test:0", "Noname", "8800F lookalike", "virtual device"),
+    ]
+    assert find_canoscan_device(devices) is None
+
+
+class _FakeFlatbedDev:
+    resolution = 300
+
+    def __init__(self, image):
+        self._image = image
+        self.scans = 0
+
+    def snap(self):
+        raise AssertionError("snap() without start() never returns on real hardware")
+
+    def scan(self):
+        self.scans += 1
+        return self._image
+
+
+def _flatbed_with(image, resolution=300):
+    # Skips __init__, which needs libsane and a real scanner (verified manually on hardware).
+    from scanix500.capture import PySaneFlatbed
+    device = PySaneFlatbed.__new__(PySaneFlatbed)
+    device._dev = _FakeFlatbedDev(image)
+    device._resolution = resolution
+    device._pending = False
+    return device
+
+
+def test_flatbed_returns_one_frame_with_its_dpi_then_stops():
+    device = _flatbed_with(_img("glass"), resolution=600)
+    device.start()
+    frame = device.read_frame()
+    assert frame.info["tag"] == "glass" and frame.info["dpi"] == (600, 600)
+    with pytest.raises(StopIteration):
+        device.read_frame()
+    assert device._dev.scans == 1 and device.multi_feed_detected() is False
+
+
+def test_flatbed_scans_again_after_a_new_start():
+    device = _flatbed_with(_img("glass"))
+    device.start(); device.read_frame()
+    device.start(); device.read_frame()
+    assert device._dev.scans == 2
+
+
+def test_capture_pages_gives_one_page_for_a_flatbed():
+    device = _flatbed_with(_img("glass"))
+    pages = capture_pages(device, duplex=False)
+    assert len(pages) == 1 and pages[0].back is None and pages[0].front.info["tag"] == "glass"

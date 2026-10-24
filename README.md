@@ -86,7 +86,7 @@ commands for that session.
 To run scanix500 from an installed copy rather than this checkout (so
 switching branches here doesn't change the scanner software in use):
 
-    scripts/install-app.sh v0.7.0
+    scripts/install-app.sh v0.8.0
 
 It installs that tag into `/Applications/Dossiary/scanix500/` (a new
 `venvs/<version>-<time>` folder, with `venv` pointing at it), points the
@@ -110,6 +110,28 @@ is described in `docs/raspberry-pi.md` -- the package is built by GitHub
 Actions for every `v*` tag and attached to the release.
 
 ![Dossiary talks to the scan helper on localhost; only the helper's hop to scanix500-server on the Raspberry Pi crosses the network, over HTTPS with a pinned certificate. A measured 6-page duplex scan reaches Dossiary's Inbox after 27 s and is searchable after about 179 s, against 332 s if the Pi recognised the text first.](docs/images/pi-scan-path.svg)
+
+## Canon CanoScan 8800F (flatbed)
+
+The CanoScan 8800F works as a second scanner next to the iX500: one A4 page
+per scan from the glass, 150/300/600 dpi, color/gray/black & white, with OCR.
+It uses SANE's `pixma` backend, which `sane-backends` includes. Scanners are
+listed in Dossiary only while they are plugged in (the USB bus is checked, SANE
+is not opened), so an unplugged scanner disappears from the picker.
+
+- **On the Mac**, its three PDF scan buttons start a scan with the "Hardware
+  Button" profile, like the iX500's button: COLOR scans in color, BLACK & WHITE
+  in black & white, CUSTOM uses the profile as it is. COPY, PHOTO/FILM, E-MAIL
+  and FINISH do nothing. Feeder settings in that profile (both sides, split on
+  blank pages) don't apply to the glass and are ignored.
+- **On `scanix500-server`** it appears in Dossiary Scan Helper like any scanner.
+  Its buttons do nothing there: the server's button (pairing computers) is
+  the iX500's only.
+- Its pages are not trimmed, snapped to a paper size or checked for blankness:
+  the lid is white and a scan is one page. A smaller sheet leaves white margin.
+- Photos, higher resolutions and film are not supported yet.
+- On the Raspberry Pi, plug scanners in while it is switched off: hot-plugging
+  one has frozen the Pi until its power was cut.
 
 ## Languages
 
@@ -511,8 +533,9 @@ and no query string); the contract is dossiary-scan-helper's `PROTOCOL.md`.
   (`deu+eng`) as part of the scan.
 - Older Dossiary releases keep working: a `POST /scan` with a query string is
   still a version 1 request, answered as before.
-- The iX500 is always listed in `/scanners`; the bridge doesn't probe the
-  scanner for that. With it unplugged, a scan answers `503`.
+- `/scanners` lists the known scanners that are plugged in, found on the USB
+  bus (`ioreg` on macOS, sysfs on Linux) without opening SANE. A scan for a
+  known scanner that is unplugged answers `503`; an unknown scanner id `404`.
 - Version 2 file entries are `{name, pages, data}` (see dossiary-scan-helper's
   `PROTOCOL.md`), unlike version 1's `{filename, content_base64}`.
 - Black & white is scanned as gray and then thresholded to 1-bit (at 160).

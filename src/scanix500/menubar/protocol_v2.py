@@ -11,23 +11,11 @@ from pypdf import PdfReader
 
 from scanix500.menubar.profiles import Profile
 from scanix500.menubar.runner import ScanResult
-
-# Always listed: probing SANE from the HTTP thread would race the menu bar's
-# button poller. A scan with the scanner unplugged answers 503 instead.
-IX500 = {
-    "id": "sane:ix500",
-    "name": "ScanSnap iX500",
-    "sources": ["feeder"],
-    "duplex": True,
-    "colorModes": ["color", "gray", "bw"],
-    "resolutions": [300, 600],
-    "extras": ["splitOnBlank", "skipBlankPages"],
-    "ocr": {"languages": ["deu", "eng", "fra", "spa", "chi_sim", "chi_tra"]},
-}
+from scanix500.scanners import IX500, IX500_ID, get_scanner  # noqa: F401 - IX500 is re-exported
 
 EMPTY_FEEDER_MESSAGE = "No paper in the feeder."
 ALL_BLANK_MESSAGE = "Every page was blank, so no PDF was made."
-NOT_CONNECTED_MESSAGE = "The ScanSnap iX500 isn't connected. Check that it's plugged in and switched on."
+NOT_CONNECTED_MESSAGE = get_scanner(IX500_ID).not_connected_message
 
 
 class ProtocolError(Exception):
@@ -111,7 +99,7 @@ def pages_message(count: int) -> str:
     return "1 page scanned." if count == 1 else f"{count} pages scanned."
 
 
-def profile_for(settings: dict, destination: str) -> Profile:
+def profile_for(settings: dict, destination: str, scanner: str = IX500_ID) -> Profile:
     """The one-off Profile a version 2 request runs. OCR stays on, as for
     every scanix500 scan, unless a background job does it. No extras means no blank filtering at all."""
     extras = settings["extras"]
@@ -127,6 +115,7 @@ def profile_for(settings: dict, destination: str) -> Profile:
         color_mode=settings["colorMode"],
         resolution=settings["resolution"],
         keep_blank_pages=split and not skip_blank,
+        scanner=scanner,
     )
 
 
@@ -145,7 +134,8 @@ def _first_part(message: str) -> str:
     return message.split(" — ")[0].strip()
 
 
-def response_from_result(result: ScanResult) -> tuple[int, dict]:
+def response_from_result(result: ScanResult, scanner_id: str = IX500_ID) -> tuple[int, dict]:
+    known = get_scanner(scanner_id) or get_scanner(IX500_ID)
     files = [entry for entry in (_file_entry(p) for p in result.output_paths) if entry]
     if result.ok:
         if files:
@@ -160,10 +150,10 @@ def response_from_result(result: ScanResult) -> tuple[int, dict]:
         return 200, {"ok": False, "partial": True, "message": _first_part(result.message), "files": files}
     prefix = "Scanner not found: "
     if result.message.startswith("Scanner not found"):
-        if "No iX500 found" in result.message:
-            return 503, error_body(NOT_CONNECTED_MESSAGE)
+        if known.not_found_text in result.message:
+            return 503, error_body(known.not_connected_message)
         detail = _first_part(result.message[len(prefix):] if result.message.startswith(prefix) else result.message)
-        return 503, error_body(f"The ScanSnap iX500 can't be used right now: {detail}")
+        return 503, error_body(f"The {known.name} can't be used right now: {detail}")
     if result.message.startswith("Scanner setup failed"):
         return 500, error_body(_first_part(result.message))
     return 500, error_body(_first_part(result.message) or "The scan failed.")
