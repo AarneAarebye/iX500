@@ -235,3 +235,55 @@ def test_version_flag_prints_version_without_destination(capsys):
 
     assert exc.value.code == 0
     assert capsys.readouterr().out.strip() == f"scanix500 {__version__}"
+
+
+def _fake_ocr(cmd, check, capture_output):
+    Path(cmd[2]).write_bytes(Path(cmd[1]).read_bytes())
+
+
+def test_flatbed_scan_uses_the_flatbed_device_and_skips_trim_snap_and_blank_filter(tmp_path):
+    blank_page = PagePair(Image.new("L", (100, 100), color=255))  # a blank page must still come out
+    with patch("scanix500.cli.PySaneFlatbed") as flatbed, patch("scanix500.cli.PySaneDevice") as feeder, patch(
+        "scanix500.cli.capture_pages", return_value=[blank_page]
+    ) as capture, patch("scanix500.cli.trim_background", side_effect=AssertionError("trimmed")), patch(
+        "scanix500.cli.snap_to_standard_size", side_effect=AssertionError("snapped")
+    ), patch("scanix500.cli.filter_pages", side_effect=AssertionError("filtered")), patch(
+        "scanix500.pdf_builder.subprocess.run", side_effect=_fake_ocr
+    ):
+        exit_code = main([str(tmp_path), "--scanner", "sane:canoscan-8800f", "--mode", "gray", "--resolution", "600"])
+
+    assert exit_code == 0
+    flatbed.assert_called_once_with(color_mode="gray", resolution=600)
+    feeder.assert_not_called()
+    assert capture.call_args.kwargs == {"duplex": False}
+    assert len(PdfReader(next(tmp_path.glob("scan_*.pdf"))).pages) == 1
+
+
+def test_flatbed_black_and_white_is_thresholded(tmp_path):
+    page = PagePair(_content_image())
+    with patch("scanix500.cli.PySaneFlatbed"), patch("scanix500.cli.capture_pages", return_value=[page]), patch(
+        "scanix500.cli.to_black_and_white", side_effect=lambda im: im.convert("1")
+    ) as bw, patch("scanix500.pdf_builder.subprocess.run", side_effect=_fake_ocr):
+        assert main([str(tmp_path), "--scanner", "sane:canoscan-8800f", "--mode", "bw"]) == 0
+    assert bw.call_count == 1
+
+
+def test_the_default_scanner_is_still_the_ix500(tmp_path):
+    with patch("scanix500.cli.PySaneFlatbed") as flatbed, patch("scanix500.cli.PySaneDevice"), patch(
+        "scanix500.cli.capture_pages", return_value=[PagePair(_content_image(), _content_image())]
+    ), patch("scanix500.pdf_builder.subprocess.run", side_effect=_fake_ocr):
+        assert main([str(tmp_path)]) == 0
+    flatbed.assert_not_called()
+
+
+def test_flatbed_not_found_reports_the_scanner(tmp_path, capsys):
+    from scanix500.errors import ScannerNotFoundError
+    with patch("scanix500.cli.PySaneFlatbed", side_effect=ScannerNotFoundError("No CanoScan 8800F found via SANE pixma backend")):
+        assert main([str(tmp_path), "--scanner", "sane:canoscan-8800f"]) == 1
+    assert "Scanner not found: No CanoScan 8800F found" in capsys.readouterr().err
+
+
+def test_an_unknown_scanner_id_is_refused(tmp_path):
+    import pytest
+    with pytest.raises(SystemExit):
+        main([str(tmp_path), "--scanner", "sane:nope"])
