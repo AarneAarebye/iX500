@@ -141,3 +141,29 @@ def test_profile_skips_ocr_when_the_job_does_it():
                 "format": "pdf", "extras": {}, "ocr": True, "ocrLanguages": []}
     assert profile_for(settings, "/d").skip_ocr is True
     assert profile_for({**settings, "ocr": False}, "/d").skip_ocr is False
+
+
+def test_profile_for_carries_the_scanner_id():
+    settings = {"source": "flatbed", "duplex": False, "colorMode": "gray", "resolution": 300,
+                "format": "pdf", "extras": {}}
+    assert profile_for(settings, "/d").scanner == "sane:ix500"
+    assert profile_for(settings, "/d", "sane:canoscan-8800f").scanner == "sane:canoscan-8800f"
+
+
+def test_not_found_is_503_with_the_scanners_own_message():
+    from scanix500.scanners import CANOSCAN_8800F_ID, get_scanner
+    result = ScanResult(False, False, "Scanner not found: No CanoScan 8800F found via SANE pixma backend", [])
+    assert response_from_result(result, CANOSCAN_8800F_ID) == (
+        503, error_body(get_scanner(CANOSCAN_8800F_ID).not_connected_message))
+    # The iX500's text doesn't match the 8800F's scanner.
+    ix = ScanResult(False, False, "Scanner not found: No iX500 found via SANE fujitsu backend", [])
+    status, body = response_from_result(ix, CANOSCAN_8800F_ID)
+    assert status == 503 and body["message"].startswith("The Canon CanoScan 8800F can't be used right now")
+
+
+def test_a_driver_failure_names_the_scanner():
+    from scanix500.scanners import CANOSCAN_8800F_ID
+    result = ScanResult(False, False, "Scanner not found: Failed to open SANE device: busy", [])
+    status, body = response_from_result(result, CANOSCAN_8800F_ID)
+    assert (status, body["message"]) == (
+        503, "The Canon CanoScan 8800F can't be used right now: Failed to open SANE device: busy")

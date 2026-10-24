@@ -18,8 +18,9 @@ from scanix500.pdf_builder import installed_ocr_languages
 from scanix500.menubar.ocr_jobs import OcrJobQueue, default_ocr_jobs_path
 from scanix500.menubar.pairing import PairingError, PairingStore, bearer_token
 from scanix500.menubar.profiles import Profile
-from scanix500.menubar.protocol_v2 import IX500, ProtocolError, error_body, profile_for, response_from_result, validate
+from scanix500.menubar.protocol_v2 import ProtocolError, error_body, profile_for, response_from_result, validate
 from scanix500.menubar.runner import ScanResult
+from scanix500.scanners import IX500_ID, KnownScanner, attached_scanners, get_scanner
 
 if TYPE_CHECKING:
     from scanix500.server.button_pairing import ButtonPairing
@@ -153,6 +154,15 @@ def route_scan_request(destination: str, params: dict[str, str], trigger: ScanTr
     }
 
 
+def _absent_scanner(body: object, attached: list[dict]) -> KnownScanner | None:
+    """The catalogue scanner a scan request names when it's known but not
+    plugged in (so the answer is 503 "not connected", not 404)."""
+    scanner_id = body.get("scanner") if isinstance(body, dict) else None
+    if not isinstance(scanner_id, str) or any(s["id"] == scanner_id for s in attached):
+        return None
+    return get_scanner(scanner_id)
+
+
 class V2Backend(Protocol):
     """Where version 2 scanners come from: the real iX500 (RealBackend) or
     the protocol's fake scanners (fakes.FakeBackend)."""
@@ -184,19 +194,23 @@ class RealBackend:
             return self._queue
 
     def scanners(self) -> list[dict]:
-        entry = dict(IX500)
+        return [self._with_ocr(entry) for entry in attached_scanners()]
+
+    def _with_ocr(self, entry: dict) -> dict:
+        entry = dict(entry)
         if self._no_ocr:
-            del entry["ocr"]
+            entry.pop("ocr", None)
         else:
             installed = installed_ocr_languages()
             if installed is not None:
                 entry["ocr"] = {"languages": [c for c in entry["ocr"]["languages"] if c in installed]}
-        return [entry]
+        return entry
 
     def scan(self, scanner: dict, settings: dict) -> tuple[int, dict]:
         # ScanBusyError propagates to the handler (409).
-        result = self._trigger.trigger(profile_for(settings, self._get_destination()))
-        status, body = response_from_result(result)
+        scanner_id = scanner.get("id", IX500_ID)
+        result = self._trigger.trigger(profile_for(settings, self._get_destination(), scanner_id))
+        status, body = response_from_result(result, scanner_id)
         if status == 200 and settings.get("ocr"):
             by_name = {Path(p).name: p for p in result.output_paths}
             for entry in body.get("files", []):
@@ -388,8 +402,14 @@ def make_handler_class(
             except _BodyError:
                 self._error(400, "The scan request must be a JSON object.")
                 return
+            scanners = backend.scanners()
+            absent = _absent_scanner(body, scanners)
             try:
-                scanner, settings = validate(body, backend.scanners())
+                # A known scanner that isn't plugged in is validated against its
+                # catalogue entry first, then refused as "not connected".
+                scanner, settings = validate(body, (scanners + [absent.entry]) if absent else scanners)
+                if absent:
+                    raise ProtocolError(503, absent.not_connected_message)
             except ProtocolError as e:
                 self._error(e.status, e.message)
                 return
