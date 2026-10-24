@@ -34,7 +34,7 @@ spec/plan cycle:
   `GET /scanners`, and a generic request validation; a flatbed scan is one page.
 
 Not yet verified (manual checklist below): an actual 8800F scan through
-`python-sane`, its button, a transparency scan.
+`python-sane` (the Pi and the Mac), a transparency scan. The buttons are verified (section 5).
 
 ## Design
 
@@ -105,18 +105,33 @@ path. The iX500 path is not touched.
 `extras` `splitOnBlank` / `skipBlankPages` on the 8800F are refused by the
 existing generic validation (not in its `extras`). `duplex: true` likewise.
 
-### 5. The 8800F's button, Mac only (`menubar/`)
+### 5. The 8800F's buttons, Mac only (`menubar/`)
 
-On the Mac the 8800F's button starts a scan with the reserved "Hardware Button"
-profile and the same destination and notification as the iX500's button;
-the profile's feeder-only settings (duplex, split on blank) don't apply to the
-flatbed and are ignored. `scanix500-server` doesn't act on the 8800F's button
-(the iX500's button on the server only pairs computers; unchanged). A pixma
-button reader goes into `button_watcher.py` next to the fujitsu one, via
-`button-update` and `button-1`/`button-2`. **Which button counts and whether
-polling disturbs a running scan is unknown and is verified on the hardware
-first** (checklist). Each poller opens only its own device, and the existing
-busy guard keeps one scan at a time across both scanners and all triggers.
+Verified on the real 8800F (2026-10-24, `scripts/probe-pixma-buttons.py`):
+SANE's `target` option reads the pressed button's number for about one poll
+and 0 otherwise, when polled the way the menu bar app polls (open, read, close):
+
+| `target` | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|
+| button | COPY | PHOTO/FILM | E-MAIL | COLOR | BLACK & WHITE | CUSTOM | FINISH |
+
+`button-update` can't be set through python-sane, and `button-1` blips to 1
+about every 12 seconds while idle, so only `target` is read.
+
+On the Mac the three PDF scan buttons start a flatbed scan with the reserved
+"Hardware Button" profile, its destination and the usual notification: COLOR
+scans in color, BLACK & WHITE in black & white (overriding the profile's mode),
+CUSTOM uses the profile as it is. COPY, PHOTO/FILM, E-MAIL and FINISH do nothing
+(FINISH ends a multi-page PDF, which a single flatbed page never needs). The
+profile's feeder-only settings (duplex, split on blank) are ignored for the
+glass. `scanix500-server` doesn't act on the 8800F's buttons (the iX500's
+button on the server only pairs computers; unchanged). `button_watcher.py`
+gets, per scanner, a reader returning the profile overrides a press asks for
+(`{}` = none, `None` = no press): the iX500's reader wraps the existing
+`button_pressed`, the 8800F's is `pixma_button_overrides`. Each poller opens only its own
+device, and the existing busy guard keeps one scan at a time across both
+scanners and all triggers. A tap shorter than the poll interval could be missed;
+all seven buttons were caught in the probe.
 
 ### 6. Concurrency
 
@@ -154,9 +169,9 @@ Manual, on real hardware (not mocked, per this repo's rule):
   when the other is unplugged; an 8800F scan at 150/300/600, gray/color/bw,
   with and without OCR; first-scan calibration time; both scanners attached
   and a scan on each in turn.
-- Mac: the same through the menu bar app's bridge; the 8800F button starts a
-  scan, and which button; polling doesn't disturb a scan; iX500 button still
-  works with both attached.
+- Mac: the same through the menu bar app's bridge; the COLOR, BLACK & WHITE and
+  CUSTOM buttons start a scan with the right mode and the other four do nothing;
+  polling doesn't disturb a scan; the iX500 button still works with both attached.
 - A transparency scan is *not* part of this sub-project (only noted for 3).
 
 ## Release

@@ -1010,97 +1010,40 @@ git commit -m "GET /scanners lists what is plugged in; the scan carries its scan
 
 ---
 
-### Task 6: The 8800F's button on the Mac (probe first)
+### Task 6: The 8800F's buttons on the Mac
 
 **Files:**
-- Create: `scripts/probe-pixma-buttons.py`
+- Already written by the controller, uncommitted: `scripts/probe-pixma-buttons.py` (the manual probe; commit it with this task) and the spec's section 5 (the verified button table).
 - Modify: `src/scanix500/menubar/button_watcher.py`
 - Modify: `src/scanix500/menubar/app.py` (`__init__` state and `_poll_button`)
 - Test: `tests/menubar/test_button_watcher.py` (new), `tests/menubar/test_app.py`
 
+**Verified on the real 8800F (2026-10-24, see the spec's section 5):** polled the way the app polls (open, read, close), SANE's `target` option reads the pressed button's number for about one poll and 0 otherwise: 1 COPY, 2 PHOTO/FILM, 3 E-MAIL, 4 COLOR, 5 BLACK & WHITE, 6 CUSTOM, 7 FINISH. `button-update` cannot be set through python-sane, and `button-1` blips to 1 about every 12 s while idle, so **only `target` is read, and `button-update` is never called**.
+
 **Interfaces:**
 - Consumes: `find_canoscan_device`, `find_fujitsu_device` (capture.py), `IX500_ID`, `CANOSCAN_8800F_ID` (Task 1), `Profile.scanner` (Task 2).
 - Produces:
-  - `resolve_device_name(scanner_id: str = IX500_ID) -> str | None` (default keeps every existing caller working)
-  - `_pixma_pressed(values: dict[str, int]) -> bool` (pure; **the rule comes from the probe**)
-  - `pixma_button_pressed(device_name: str) -> bool` (never raises)
-  - `BUTTON_READERS: dict[str, Callable[[str], bool]]`: `{IX500_ID: button_pressed, CANOSCAN_8800F_ID: pixma_button_pressed}`
-  - the app polls each scanner in `BUTTON_READERS` and starts a scan with `dataclasses.replace(profile, scanner=<that scanner's id>)`.
+  - `resolve_device_name(scanner_id: str = IX500_ID) -> str | None` (the default keeps every existing caller working)
+  - `PIXMA_BUTTONS: dict[int, dict]` = `{4: {"color_mode": "color"}, 5: {"color_mode": "bw"}, 6: {}}`
+  - `_pixma_overrides(values: dict[str, int]) -> dict | None` (pure)
+  - `pixma_button_overrides(device_name: str) -> dict | None` (hardware; never raises)
+  - `ix500_button_overrides(device_name: str) -> dict | None` (`{}` when the iX500's button is pressed, else `None`)
+  - `BUTTON_READERS: dict[str, Callable[[str], dict | None]]` (scanner id -> reader; `None` = no press, a dict = Profile overrides, `{}` = none)
+  - the app polls each scanner in `BUTTON_READERS` and starts a scan with `dataclasses.replace(profile, scanner=<id>, **overrides)`.
 
-This task needs the real 8800F attached to the Mac, because nobody knows yet how pixma reports a button press (SANE exposes `button-update` and read-only `button-1`, `button-2`, `target`, `original`, ...).
-
-- [ ] **Step 1: Write the probe script**
-
-Create `scripts/probe-pixma-buttons.py`:
-
-```python
-#!/usr/bin/env python3
-"""Manual probe, not a test: which SANE options of a pixma scanner (the
-CanoScan 8800F) change when a button on the scanner is pressed?
-
-Run with the scanner attached and nothing else using it:
-    .venv/bin/python scripts/probe-pixma-buttons.py
-Then press each button on the scanner once, a few seconds apart. The script
-prints the button-related options once a second and says when one changes."""
-
-import time
-
-import sane
-
-OPTIONS = ("button-1", "button-2", "original", "target", "scan-resolution", "document-type",
-           "adf-status", "adf-orientation")
-
-
-def main() -> int:
-    sane.init()
-    name = next((d[0] for d in sane.get_devices() if d[0].startswith("pixma:") and "8800f" in d[2].lower()), None)
-    if name is None:
-        print("No CanoScan 8800F found")
-        return 1
-    dev = sane.open(name)
-    print("opened", name)
-    last = None
-    try:
-        for _ in range(45):
-            opts = {o[1]: o[0] for o in dev.get_options()}  # fresh descriptors every time
-            try:
-                dev.dev.set_option(opts["button-update"], 0)  # asks the driver to refresh the button state
-            except Exception as e:  # noqa: BLE001 - say what happened, keep going
-                print("button-update failed:", repr(e))
-            values = {}
-            for option in OPTIONS:
-                try:
-                    values[option] = dev.dev.get_option(opts[option])
-                except Exception as e:  # noqa: BLE001
-                    values[option] = f"<{e!r}>"
-            if values != last:
-                print(time.strftime("%H:%M:%S"), values, "<-- changed" if last is not None else "")
-                last = values
-            time.sleep(1)
-    finally:
-        dev.close()
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
-```
-
-- [ ] **Step 2: Run the probe on the real scanner and record what it shows**
-
-Run: `.venv/bin/python scripts/probe-pixma-buttons.py` with the 8800F plugged into this Mac, and press each of its buttons once.
-
-Record in `docs/superpowers/specs/2026-10-24-canoscan-8800f-flatbed-design.md` under a new heading `## Verified on hardware: the 8800F's buttons`: which option changed, to which value per button, whether it goes back to its idle value, and whether `button-update` failed. **Decision gate:** the rule in Step 4's `_pixma_pressed` (`target` non-zero) is a hypothesis; if the probe shows a different option or values, change `_pixma_pressed` and the table in Step 3's test to the recorded ones before continuing. If no option changes at all, stop and report to the user: the button can't be polled and the Mac button feature falls back to the spec's "later add-on".
-
-- [ ] **Step 3: Write the failing tests**
+- [ ] **Step 1: Write the failing tests**
 
 Create `tests/menubar/test_button_watcher.py`:
 
 ```python
+import sys
+
 import pytest
 
 from scanix500.menubar import button_watcher
-from scanix500.menubar.button_watcher import BUTTON_READERS, _pixma_pressed, resolve_device_name
+from scanix500.menubar.button_watcher import (
+    BUTTON_READERS, PIXMA_BUTTONS, _pixma_overrides, ix500_button_overrides, resolve_device_name,
+)
 from scanix500.scanners import CANOSCAN_8800F_ID, IX500_ID
 
 DEVICES = [
@@ -1118,46 +1061,67 @@ class _FakeSane:
 
 
 def test_resolve_finds_each_scanners_device(monkeypatch):
-    monkeypatch.setitem(__import__("sys").modules, "sane", _FakeSane())
+    monkeypatch.setitem(sys.modules, "sane", _FakeSane())
     assert resolve_device_name() == "fujitsu:ScanSnap iX500:1203900"  # the default is the iX500
     assert resolve_device_name(IX500_ID) == "fujitsu:ScanSnap iX500:1203900"
     assert resolve_device_name(CANOSCAN_8800F_ID) == "pixma:04A91901"
 
 
 def test_resolve_returns_none_for_an_unknown_scanner_or_without_sane(monkeypatch):
-    monkeypatch.setitem(__import__("sys").modules, "sane", _FakeSane())
+    monkeypatch.setitem(sys.modules, "sane", _FakeSane())
     assert resolve_device_name("sane:nope") is None
-    monkeypatch.setitem(__import__("sys").modules, "sane", None)  # import sane -> ImportError
+    monkeypatch.setitem(sys.modules, "sane", None)  # import sane -> ImportError
     assert resolve_device_name(CANOSCAN_8800F_ID) is None
 
 
-# The idle and pressed values come from scripts/probe-pixma-buttons.py on the real 8800F
-# (see the spec's "Verified on hardware" section); update this table if the probe says otherwise.
-@pytest.mark.parametrize("values, pressed", [
-    ({"button-1": 1, "button-2": 0, "target": 0}, False),
-    ({"button-1": 1, "button-2": 0, "target": 1}, True),
-    ({"button-1": 1, "button-2": 0}, False),
-    ({}, False),
+# Measured on the real 8800F (see the spec's section 5): `target` is the pressed
+# button's number for about one poll and 0 otherwise.
+@pytest.mark.parametrize("target, expected", [
+    (0, None),
+    (1, None),  # COPY
+    (2, None),  # PHOTO/FILM
+    (3, None),  # E-MAIL
+    (4, {"color_mode": "color"}),  # COLOR
+    (5, {"color_mode": "bw"}),  # BLACK & WHITE
+    (6, {}),  # CUSTOM: the profile as it is
+    (7, None),  # FINISH
+    (8, None),
 ])
-def test_pixma_pressed_rule(values, pressed):
-    assert _pixma_pressed(values) is pressed
+def test_pixma_buttons(target, expected):
+    # button-1 blips to 1 while idle; it must not matter.
+    assert _pixma_overrides({"button-1": 1, "button-2": 0, "target": target}) == expected
+
+
+def test_pixma_overrides_without_a_target_is_no_press():
+    assert _pixma_overrides({}) is None
+
+
+def test_pixma_overrides_returns_a_copy():
+    _pixma_overrides({"target": 4})["color_mode"] = "gray"
+    assert PIXMA_BUTTONS[4] == {"color_mode": "color"}
+
+
+def test_an_ix500_press_means_no_overrides(monkeypatch):
+    monkeypatch.setattr(button_watcher, "button_pressed", lambda dev: True)
+    assert ix500_button_overrides("fujitsu:1") == {}
+    monkeypatch.setattr(button_watcher, "button_pressed", lambda dev: False)
+    assert ix500_button_overrides("fujitsu:1") is None
 
 
 def test_each_button_scanner_has_a_reader():
-    assert set(BUTTON_READERS) == {IX500_ID, CANOSCAN_8800F_ID}
-    assert BUTTON_READERS[IX500_ID] is button_watcher.button_pressed
-    assert BUTTON_READERS[CANOSCAN_8800F_ID] is button_watcher.pixma_button_pressed
+    assert BUTTON_READERS == {IX500_ID: ix500_button_overrides,
+                              CANOSCAN_8800F_ID: button_watcher.pixma_button_overrides}
 
 
-def test_pixma_button_pressed_never_raises(monkeypatch):
-    monkeypatch.setitem(__import__("sys").modules, "sane", None)
-    assert button_watcher.pixma_button_pressed("pixma:04A91901") is False
+def test_pixma_button_overrides_never_raises(monkeypatch):
+    monkeypatch.setitem(sys.modules, "sane", None)
+    assert button_watcher.pixma_button_overrides("pixma:04A91901") is None
 ```
 
 Append to `tests/menubar/test_app.py`:
 
 ```python
-def _poller_app(profile):
+def _poller_app(profile, started):
     from scanix500.menubar.app import ScanixMenuBarApp
 
     app = ScanixMenuBarApp.__new__(ScanixMenuBarApp)
@@ -1169,31 +1133,47 @@ def _poller_app(profile):
     return app
 
 
-def test_poll_button_starts_a_scan_with_the_scanner_whose_button_was_pressed():
-    from scanix500.menubar import app as app_module
+def _hardware_profile(**changes):
     from scanix500.menubar.profiles import HARDWARE_BUTTON_PROFILE_NAME
+    return Profile(name=HARDWARE_BUTTON_PROFILE_NAME, destination="/tmp/scans", **changes)
 
-    global started
+
+def test_poll_button_scans_with_the_scanner_and_mode_of_the_pressed_button():
+    from scanix500.menubar import app as app_module
+
     started = []
-    app = _poller_app(Profile(name=HARDWARE_BUTTON_PROFILE_NAME, destination="/tmp/scans"))
-    readers = {"sane:ix500": lambda dev: False, "sane:canoscan-8800f": lambda dev: dev == "pixma:1"}
+    app = _poller_app(_hardware_profile(), started)
+    readers = {"sane:ix500": lambda dev: None,
+               "sane:canoscan-8800f": lambda dev: {"color_mode": "bw"} if dev == "pixma:1" else None}
+    names = {"sane:ix500": "fujitsu:1", "sane:canoscan-8800f": "pixma:1"}
     with patch.object(app_module, "BUTTON_READERS", readers), patch.object(
-        app_module, "resolve_device_name", side_effect=lambda sid: {"sane:ix500": "fujitsu:1", "sane:canoscan-8800f": "pixma:1"}[sid]
+        app_module, "resolve_device_name", side_effect=lambda sid: names[sid]
     ):
         app._poll_button(None)
 
-    assert [p.scanner for p in started] == ["sane:canoscan-8800f"]
-    assert started[0].destination == "/tmp/scans"
+    assert [(p.scanner, p.color_mode, p.destination) for p in started] == [
+        ("sane:canoscan-8800f", "bw", "/tmp/scans")]
+
+
+def test_an_ix500_press_keeps_the_profiles_own_mode():
+    from scanix500.menubar import app as app_module
+
+    started = []
+    app = _poller_app(_hardware_profile(color_mode="gray"), started)
+    with patch.object(app_module, "BUTTON_READERS", {"sane:ix500": lambda dev: {}}), patch.object(
+        app_module, "resolve_device_name", return_value="fujitsu:1"
+    ):
+        app._poll_button(None)
+
+    assert [(p.scanner, p.color_mode) for p in started] == [("sane:ix500", "gray")]
 
 
 def test_poll_button_does_nothing_while_scanning_or_when_nothing_is_pressed():
     from scanix500.menubar import app as app_module
-    from scanix500.menubar.profiles import HARDWARE_BUTTON_PROFILE_NAME
 
-    global started
     started = []
-    app = _poller_app(Profile(name=HARDWARE_BUTTON_PROFILE_NAME, destination="/tmp/scans"))
-    readers = {"sane:ix500": lambda dev: True}
+    app = _poller_app(_hardware_profile(), started)
+    readers = {"sane:ix500": lambda dev: {}}
     with patch.object(app_module, "BUTTON_READERS", readers), patch.object(
         app_module, "resolve_device_name", return_value="fujitsu:1"
     ):
@@ -1201,19 +1181,16 @@ def test_poll_button_does_nothing_while_scanning_or_when_nothing_is_pressed():
         app._poll_button(None)
         assert started == []
         app._scanning = False
-        readers["sane:ix500"] = lambda dev: False
+        readers["sane:ix500"] = lambda dev: None
         app._poll_button(None)
         assert started == []
 
 
 def test_poll_button_retries_an_unresolved_scanner_only_every_nth_tick():
     from scanix500.menubar import app as app_module
-    from scanix500.menubar.profiles import HARDWARE_BUTTON_PROFILE_NAME
 
-    global started
-    started = []
-    app = _poller_app(Profile(name=HARDWARE_BUTTON_PROFILE_NAME, destination="/tmp/scans"))
-    with patch.object(app_module, "BUTTON_READERS", {"sane:canoscan-8800f": lambda dev: False}), patch.object(
+    app = _poller_app(_hardware_profile(), [])
+    with patch.object(app_module, "BUTTON_READERS", {"sane:canoscan-8800f": lambda dev: None}), patch.object(
         app_module, "resolve_device_name", return_value=None
     ) as resolve:
         for _ in range(app_module.RESOLVE_RETRY_TICKS + 1):
@@ -1221,14 +1198,14 @@ def test_poll_button_retries_an_unresolved_scanner_only_every_nth_tick():
     assert resolve.call_count == 2  # tick 0 and tick RESOLVE_RETRY_TICKS
 ```
 
-- [ ] **Step 4: Run to verify they fail, then implement**
+- [ ] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/menubar/test_button_watcher.py tests/menubar/test_app.py -q`
-Expected: FAIL (`cannot import name 'BUTTON_READERS'`, `_poll_button` still uses `_button_device_name`).
+Expected: FAIL (`cannot import name 'BUTTON_READERS'`; `_poll_button` still uses `_button_device_name`).
 
-In `src/scanix500/menubar/button_watcher.py`:
+- [ ] **Step 3: Implement `button_watcher.py`**
 
-Replace the imports and `resolve_device_name`:
+Replace the imports and `resolve_device_name` at the top of `src/scanix500/menubar/button_watcher.py`:
 
 ```python
 from __future__ import annotations
@@ -1260,21 +1237,30 @@ def resolve_device_name(scanner_id: str = IX500_ID) -> str | None:
     return finder(devices)
 ```
 
-(`button_pressed` stays exactly as it is.) Append:
+(`button_pressed` stays exactly as it is.) Append at the end of the file:
 
 ```python
-def _pixma_pressed(values: dict[str, int]) -> bool:
-    """Whether the option values read from a pixma scanner after a
-    button-update say a button is pressed. The rule comes from
-    scripts/probe-pixma-buttons.py on the real 8800F: `target` (the type of
-    operation the pressed button asks for) is 0 while idle."""
-    return bool(values.get("target", 0))
+# The 8800F's buttons (measured on the real scanner, see the spec's section 5):
+# SANE's `target` option reads the pressed button's number for about one poll,
+# 0 otherwise. 1 COPY, 2 PHOTO/FILM, 3 E-MAIL and 7 FINISH do nothing; the three
+# PDF scan buttons start a scan, COLOR and BLACK & WHITE choosing the mode and
+# CUSTOM keeping the profile as it is.
+PIXMA_BUTTONS: dict[int, dict] = {4: {"color_mode": "color"}, 5: {"color_mode": "bw"}, 6: {}}
 
 
-def pixma_button_pressed(device_name: str) -> bool:
-    """Opens a pixma scanner (the 8800F), asks the driver to refresh its
-    button state, reads the button options and closes it again. Returns
-    False on any failure rather than raising, like button_pressed()."""
+def _pixma_overrides(values: dict[str, int]) -> dict | None:
+    """The Profile overrides the pressed button asks for ({} = none), or None
+    when no scan button is pressed. Only `target` counts: `button-1` blips to 1
+    about every 12 s while the scanner is idle."""
+    found = PIXMA_BUTTONS.get(values.get("target", 0))
+    return None if found is None else dict(found)
+
+
+def pixma_button_overrides(device_name: str) -> dict | None:
+    """Opens the 8800F, reads its `target` option and closes it again.
+    Returns None on any failure rather than raising, like button_pressed().
+    button-update is never called: python-sane can't set a button option, and
+    a fresh open sees the current state."""
     try:
         import sane
 
@@ -1282,23 +1268,28 @@ def pixma_button_pressed(device_name: str) -> bool:
         dev = sane.open(device_name)
         try:
             opts = {o[1]: o[0] for o in dev.get_options()}  # fresh descriptors, as in button_pressed()
-            dev.dev.set_option(opts["button-update"], 0)
-            values = {name: dev.dev.get_option(opts[name]) for name in ("button-1", "button-2", "target") if name in opts}
-            return _pixma_pressed(values)
+            return _pixma_overrides({"target": dev.dev.get_option(opts["target"])})
         finally:
             dev.close()
     except Exception:
-        return False
+        return None
 
 
-# Which function reads each scanner's button. The Mac app polls all of them.
-BUTTON_READERS: dict[str, Callable[[str], bool]] = {
-    IX500_ID: button_pressed,
-    CANOSCAN_8800F_ID: pixma_button_pressed,
+def ix500_button_overrides(device_name: str) -> dict | None:
+    """The iX500 has one Scan button: pressed means a scan with the profile as it is."""
+    return {} if button_pressed(device_name) else None
+
+
+# Which function reads each scanner's buttons. The Mac app polls all of them.
+BUTTON_READERS: dict[str, Callable[[str], dict | None]] = {
+    IX500_ID: ix500_button_overrides,
+    CANOSCAN_8800F_ID: pixma_button_overrides,
 }
 ```
 
-In `src/scanix500/menubar/app.py`: change the import (`from scanix500.menubar.button_watcher import BUTTON_READERS, resolve_device_name` and add `from dataclasses import replace` with the other stdlib imports if it isn't there); in `__init__` replace `self._button_device_name: str | None = None` with `self._button_devices: dict[str, str | None] = {}`; and replace `_poll_button`:
+- [ ] **Step 4: Implement the app's poller**
+
+In `src/scanix500/menubar/app.py`: add `from dataclasses import replace` with the other stdlib imports if it isn't there; change the import to `from scanix500.menubar.button_watcher import BUTTON_READERS, resolve_device_name`; in `__init__` replace `self._button_device_name: str | None = None` with `self._button_devices: dict[str, str | None] = {}`; and replace `_poll_button`:
 
 ```python
     def _poll_button(self, _sender):
@@ -1311,7 +1302,7 @@ In `src/scanix500/menubar/app.py`: change the import (`from scanix500.menubar.bu
             return
         retry = self._ticks_since_resolve_attempt % RESOLVE_RETRY_TICKS == 0
         self._ticks_since_resolve_attempt += 1
-        for scanner_id, pressed in BUTTON_READERS.items():
+        for scanner_id, read_button in BUTTON_READERS.items():
             device_name = self._button_devices.get(scanner_id)
             if device_name is None:
                 # Resolving does sane.init() + get_devices() (see RESOLVE_RETRY_TICKS).
@@ -1320,11 +1311,12 @@ In `src/scanix500/menubar/app.py`: change the import (`from scanix500.menubar.bu
                 device_name = self._button_devices[scanner_id] = resolve_device_name(scanner_id)
                 if device_name is None:
                     continue
-            if not pressed(device_name):
+            overrides = read_button(device_name)
+            if overrides is None:
                 continue
             profile = find_profile(self.profiles, HARDWARE_BUTTON_PROFILE_NAME)
             if profile is not None:
-                self._start_scan(replace(profile, scanner=scanner_id))
+                self._start_scan(replace(profile, scanner=scanner_id, **overrides))
             return
 ```
 
@@ -1335,16 +1327,16 @@ In `src/scanix500/menubar/app.py`: change the import (`from scanix500.menubar.bu
 Run: `.venv/bin/python -m pytest -q`
 Expected: all PASS. `tests/server/test_runtime.py` still passes (the server imports `resolve_device_name` and `button_pressed` unchanged).
 
-- [ ] **Step 6: Manual hardware check on the Mac** (not automated)
-
-With `scripts/install-app.sh` not yet run, start the app from the checkout: `.venv/bin/scanix500-menubar`, with both scanners attached. Press the iX500's button: a scan runs and its notification appears. Press the 8800F's button: a flatbed scan runs, one PDF in the Hardware Button profile's folder. Confirm polling doesn't disturb a scan in progress (press during a scan: ignored).
-
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit** (include the controller's probe script and spec edit)
 
 ```bash
 git add scripts/probe-pixma-buttons.py src/scanix500/menubar tests/menubar docs/superpowers/specs/2026-10-24-canoscan-8800f-flatbed-design.md
-git commit -m "Mac app: the CanoScan 8800F's button starts a flatbed scan"
+git commit -m "Mac app: the CanoScan 8800F's scan buttons start a flatbed scan"
 ```
+
+- [ ] **Step 7: Manual hardware check on the Mac** (not automated; the controller does this with the user)
+
+Start the app from the checkout, `.venv/bin/scanix500-menubar`, with the 8800F (and later the iX500) attached. COLOR gives a color scan, BLACK & WHITE a black & white one, CUSTOM the profile's own mode; COPY, PHOTO/FILM, E-MAIL and FINISH do nothing; a press during a scan is ignored; the iX500's button still works with both attached.
 
 ---
 
@@ -1365,7 +1357,7 @@ In the protocol version 2 bullet, replace "**The iX500 is always listed and neve
 Add a bullet after the "Pages come out at their paper's size" bullet:
 
 ```markdown
-- **CanoScan 8800F (0.8.0)** -- spec `docs/superpowers/specs/2026-10-24-canoscan-8800f-flatbed-design.md`, plan `docs/superpowers/plans/2026-10-24-canoscan-8800f-flatbed.md`. A second scanner: flatbed, one A4 page per scan, SANE's `pixma` backend (`PySaneFlatbed`), listed as `sane:canoscan-8800f`. The scanner choice travels `POST /scan` -> `Profile.scanner` -> CLI `--scanner`. Its pages skip trim, snap and the blank filter (white lid, one page). Its button works on the Mac only (`pixma_button_pressed`, rule recorded in the spec from the real hardware); the server's button only pairs, for both scanners. Photos (JPEG/TIFF) and film are later sub-projects.
+- **CanoScan 8800F (0.8.0)** -- spec `docs/superpowers/specs/2026-10-24-canoscan-8800f-flatbed-design.md`, plan `docs/superpowers/plans/2026-10-24-canoscan-8800f-flatbed.md`. A second scanner: flatbed, one A4 page per scan, SANE's `pixma` backend (`PySaneFlatbed`), listed as `sane:canoscan-8800f`. The scanner choice travels `POST /scan` -> `Profile.scanner` -> CLI `--scanner`. Its pages skip trim, snap and the blank filter (white lid, one page). Its buttons work on the Mac only (`pixma_button_overrides`: SANE's `target` option is the pressed button's number, table in the spec; COLOR/BLACK & WHITE/CUSTOM start a scan); the server's button only pairs, for both scanners. Photos (JPEG/TIFF) and film are later sub-projects.
 ```
 
 - [ ] **Step 3: Update README.md**
@@ -1381,9 +1373,11 @@ It uses SANE's `pixma` backend, which `sane-backends` includes. Scanners are
 listed in Dossiary only while they are plugged in (the USB bus is checked, SANE
 is not opened), so an unplugged scanner disappears from the picker.
 
-- **On the Mac**, its button starts a scan with the "Hardware Button"
-  profile, like the iX500's. Feeder settings in that profile (both sides, split
-  on blank pages) don't apply to the glass and are ignored.
+- **On the Mac**, its three PDF scan buttons start a scan with the "Hardware
+  Button" profile, like the iX500's button: COLOR scans in color, BLACK & WHITE
+  in black & white, CUSTOM uses the profile as it is. COPY, PHOTO/FILM, E-MAIL
+  and FINISH do nothing. Feeder settings in that profile (both sides, split on
+  blank pages) don't apply to the glass and are ignored.
 - **On `scanix500-server`** it appears in Dossiary Scan Helper like any scanner.
   The server's button only pairs computers, for either scanner.
 - Its pages are not trimmed, snapped to a paper size or checked for blankness:
@@ -1420,4 +1414,4 @@ After tagging and installing the `.deb` (the user does this: `git tag v0.8.0`, p
 - [ ] **Step 7: Hardware checklist on the Mac** (manual)
 
 - [ ] The same scans through the menu bar app's bridge (`GET /scanners` lists both, scans work).
-- [ ] The 8800F's button starts a scan (which button: recorded in the spec); the iX500's button still works with both attached; a press during a scan is ignored.
+- [ ] COLOR, BLACK & WHITE and CUSTOM start a scan (color, black & white, the profile's mode); COPY, PHOTO/FILM, E-MAIL and FINISH do nothing; the iX500's button still works with both attached; a press during a scan is ignored.
