@@ -34,8 +34,18 @@ spec/plan cycle:
 - `PROTOCOL.md` already allows `sources: ["flatbed"]`, several scanners in
   `GET /scanners`, and a generic request validation; a flatbed scan is one page.
 
-Not yet verified (manual checklist below): an actual 8800F scan through
-`python-sane` (the Pi and the Mac), a transparency scan. The buttons are verified (section 5).
+Verified on the Mac with the real 8800F (2026-10-24, CLI and the menu bar app from
+the checkout): `scanix500 --scanner sane:canoscan-8800f` scans one A4 page
+(595.2 x 841.92 pt) in 15-29 s at 150/300/600 dpi, gray/color/bw, with OCR (bw is a
+1-bit JBIG2 image, 4961 x 7016 px at 600 dpi); the scan area set to A4 gives
+620 x 877 px at 75 dpi (the driver default, the whole glass, is 638 wide); the
+COLOR, BLACK & WHITE and CUSTOM buttons each start a scan (color, bw, the profile's
+mode), COPY and PHOTO/FILM start nothing; the app's main thread makes no SANE or
+subprocess call while polling (a 2 s sample). **Lesson:** python-sane's `snap()`
+only reads image data; on an unstarted device it spins forever in `sane_pixma_read`.
+Use `scan()` (= `start()` + `snap()`); a unit-test fake must reject `snap()` without
+a start. Still to verify: the same on the Pi (node-000, after the release), and a
+transparency scan (sub-project 3).
 
 ## Design
 
