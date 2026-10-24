@@ -86,7 +86,7 @@ commands for that session.
 To run scanix500 from an installed copy rather than this checkout (so
 switching branches here doesn't change the scanner software in use):
 
-    scripts/install-app.sh v0.8.0
+    scripts/install-app.sh v0.9.0
 
 It installs that tag into `/Applications/Dossiary/scanix500/` (a new
 `venvs/<version>-<time>` folder, with `venv` pointing at it), points the
@@ -114,7 +114,7 @@ Actions for every `v*` tag and attached to the release.
 ## Canon CanoScan 8800F (flatbed)
 
 The CanoScan 8800F works as a second scanner next to the iX500: one A4 page
-per scan from the glass, 150/300/600 dpi, color/gray/black & white, with OCR.
+per scan from the glass, 150/300/600/1200 dpi, color/gray/black & white, with OCR (PDF).
 It uses SANE's `pixma` backend, which `sane-backends` includes. Scanners are
 listed in Dossiary only while they are plugged in (the USB bus is checked, SANE
 is not opened), so an unplugged scanner disappears from the picker.
@@ -129,7 +129,12 @@ is not opened), so an unplugged scanner disappears from the picker.
   the iX500's only.
 - Its pages are not trimmed, snapped to a paper size or checked for blankness:
   the lid is white and a scan is one page. A smaller sheet leaves white margin.
-- Photos, higher resolutions and film are not supported yet.
+- **Photos:** a scan can come back as a JPEG or PNG instead of a PDF (`--format jpeg|png`
+  on the command line, `format` in the protocol), over a chosen scan area (`--area
+  a4|a5|a6|10x15|13x18`, `area` in the protocol) at up to 1200 dpi. JPEG can't be black &
+  white (use PNG or PDF), and images are not OCR'd (Dossiary does that when it imports
+  them). A scan over 100 megapixels is refused with a message, for example A4 at
+  1200 dpi: choose a smaller area or a lower resolution. Film is not supported yet.
 - On the Raspberry Pi, plug scanners in while it is switched off: hot-plugging
   one has frozen the Pi until its power was cut.
 
