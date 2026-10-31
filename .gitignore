@@ -9,3 +9,6 @@ __pycache__/
 venv/
 build/
 dist/
+
+# Personal shortcut to resume this repo's Claude Code session
+start_claude.sh
