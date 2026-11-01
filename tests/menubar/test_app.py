@@ -330,3 +330,16 @@ def test_poll_button_reports_back_even_when_the_read_raises():
     ), patch.object(app_module.AppHelper, "callAfter", side_effect=lambda fn, *a: fn(*a)):
         app._poll_button(None)
     assert app._button_reading is False
+
+
+def test_bridge_status_title_shows_the_listening_address_or_that_it_is_down():
+    from types import SimpleNamespace
+
+    from scanix500.menubar.app import ScanixMenuBarApp
+
+    app = ScanixMenuBarApp.__new__(ScanixMenuBarApp)
+    app._bridge_server = SimpleNamespace(server_address=("127.0.0.1", 8765))
+    assert app._bridge_status_title() == "Listening on 127.0.0.1:8765"
+
+    app._bridge_server = None
+    assert app._bridge_status_title() == "Not listening (scan bridge unavailable)"

@@ -101,9 +101,24 @@ class ScanixMenuBarApp(rumps.App):
         except (OSError, ValueError) as e:
             self._bridge_server = None
             rumps.notification(title=t("Scan bridge unavailable"), subtitle="", message=str(e))
+        self._bridge_status_item.title = self._bridge_status_title()
+
+    def _bridge_status_title(self) -> str:
+        server = getattr(self, "_bridge_server", None)
+        if server is None:
+            return t("Not listening (scan bridge unavailable)")
+        host, port = server.server_address[:2]
+        return t("Listening on {address}", address=f"{host}:{port}")
 
     def _rebuild_menu(self):
         self.menu.clear()
+        # Greyed-out header (no callback): the app's name and where its bridge
+        # listens, like Dossiary Scan Helper's menu. The bridge starts after
+        # the first rebuild, so __init__ refreshes the second item's title.
+        self.menu.add(rumps.MenuItem("scanix500"))
+        self._bridge_status_item = rumps.MenuItem(self._bridge_status_title())
+        self.menu.add(self._bridge_status_item)
+        self.menu.add(rumps.separator)
         for profile in self.profiles:
             self.menu.add(rumps.MenuItem(profile.name, callback=self._make_scan_handler(profile)))
         self.menu.add(rumps.separator)

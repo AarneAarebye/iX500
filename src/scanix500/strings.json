@@ -438,5 +438,21 @@
     "zh-Hans": "已配对的电脑：（用 sudo 运行以查看）",
     "zh-Hant": "已配對的電腦：（用 sudo 運行以查看）",
     "hy": "Զուգակցված համակարգիչներ՝ (գործարկեք sudo-ով՝ տեսնելու համար)"
+  },
+  "Listening on {address}": {
+    "de": "Lauscht auf {address}",
+    "es": "Escuchando en {address}",
+    "fr": "À l'écoute sur {address}",
+    "zh-Hans": "正在监听 {address}",
+    "zh-Hant": "正在監聽 {address}",
+    "hy": "Լսում է {address}"
+  },
+  "Not listening (scan bridge unavailable)": {
+    "de": "Lauscht nicht (Scan-Brücke nicht verfügbar)",
+    "es": "No escucha (puente de escaneo no disponible)",
+    "fr": "N'écoute pas (pont de numérisation indisponible)",
+    "zh-Hans": "未监听（扫描桥不可用）",
+    "zh-Hant": "未監聽（掃描橋不可用）",
+    "hy": "Չի լսում (սկանավորման կամուրջն անհասանելի է)"
   }
 }
