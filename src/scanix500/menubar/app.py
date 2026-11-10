@@ -1,6 +1,7 @@
 # src/scanix500/menubar/app.py
 from __future__ import annotations
 
+import logging
 import os
 import threading
 from collections.abc import Callable
@@ -20,6 +21,14 @@ from scanix500.menubar.bridge_settings import (
 )
 from scanix500.menubar.pairing import PairingStore, default_pairing_path
 from scanix500.menubar.button_watcher import BUTTON_READERS, FINISH, resolve_device_name
+from scanix500.menubar.collecting import (
+    FinishOutcome,
+    MacCollector,
+    PageOutcome,
+    default_collection_config_path,
+    default_collection_folder,
+    load_collect_timeout,
+)
 from scanix500.menubar.profile_form import pick_folder, show_profile_form
 from scanix500.menubar.profiles import (
     HARDWARE_BUTTON_PROFILE_NAME,
@@ -33,10 +42,14 @@ from scanix500.menubar.profiles import (
     save_profiles,
 )
 from scanix500.menubar.runner import ScanResult, display_message, notification_title, run_scan
-from scanix500.scanners import get_scanner, usb_ids
+from scanix500.scanners import CANOSCAN_8800F_ID, get_scanner, usb_ids
+
+logger = logging.getLogger(__name__)
 
 IDLE_TITLE = "📄"
 SCANNING_TITLE = "📄…"
+COLLECTING_TITLE = "📄"  # the page count follows it when the icon file is missing
+COLLECT_TICK_SECONDS = 15
 
 # Template icons (black on transparent; macOS tints them for light/dark),
 # drawn by scripts/make_menubar_icons.py. The emoji titles above are the
@@ -78,6 +91,17 @@ class ScanixMenuBarApp(rumps.App):
         # needs a token from "Pair a Browser…".
         self.pairing = PairingStore(default_pairing_path())
         self._scanning = False
+        # Collecting 8800F button pages into one PDF (see collecting.py). If
+        # its folder cannot be made, the app runs without collecting -- the
+        # old behaviour -- and every use below guards for None.
+        try:
+            folder = default_collection_folder()
+            self._collector = MacCollector(
+                folder, folder.parent / "collection-tmp",
+                timeout_seconds=load_collect_timeout(default_collection_config_path()) * 60)
+        except Exception:  # noqa: BLE001 - collecting is optional
+            logger.exception("collecting is unavailable")
+            self._collector = None
         # See _rebuild_menu's comment on self._app_started.
         self._app_started = False
         self._rebuild_menu()
@@ -90,6 +114,9 @@ class ScanixMenuBarApp(rumps.App):
         self._button_reading = False  # a button-read worker is running (main thread only)
         self._button_timer = rumps.Timer(self._poll_button, 1.5)
         self._button_timer.start()
+        self._collect_timer = rumps.Timer(self._collect_tick, COLLECT_TICK_SECONDS)
+        self._collect_timer.start()
+        self._show(self._resting_state())  # a recovered open collection shows at start-up
         # Embedded HTTP bridge (see bridge.py) -- lets an external caller
         # (Dossiary's browser JS) trigger a scan with its own parameters
         # over local HTTP. self.bridge_destination is read fresh on every
@@ -120,20 +147,27 @@ class ScanixMenuBarApp(rumps.App):
         self._bridge_status_item.title = self._bridge_status_title()
 
     def _show(self, state: str) -> None:
-        """Shows the "idle" or "scanning" state: the template icon with an
-        empty title, or the emoji title when the icon file is missing or
-        cannot be loaded. Main thread only (it touches the status item)."""
-        emoji = SCANNING_TITLE if state == "scanning" else IDLE_TITLE
+        """Shows the "idle", "scanning" or "collecting" state: the template
+        icon with an empty title (the page count for "collecting"), or the
+        emoji title when the icon file is missing or cannot be loaded. Main
+        thread only (it touches the status item)."""
+        count = str(self._collector.page_count) if state == "collecting" else ""
+        emoji = {"scanning": SCANNING_TITLE,
+                 "collecting": f"{COLLECTING_TITLE} {count}"}.get(state, IDLE_TITLE)
         path = icon_path(state)
         if path is not None:
             try:
                 self.icon = path
-                self.title = ""
+                self.title = count
                 return
             except Exception:
                 pass
         self.icon = None
         self.title = emoji
+
+    def _resting_state(self) -> str:
+        collector = getattr(self, "_collector", None)
+        return "collecting" if collector is not None and collector.is_open else "idle"
 
     def _bridge_status_title(self) -> str:
         server = getattr(self, "_bridge_server", None)
@@ -150,6 +184,14 @@ class ScanixMenuBarApp(rumps.App):
         self.menu.add(rumps.MenuItem("scanix500"))
         self._bridge_status_item = rumps.MenuItem(self._bridge_status_title())
         self.menu.add(self._bridge_status_item)
+        collector = getattr(self, "_collector", None)
+        if collector is not None and collector.is_open:
+            self.menu.add(rumps.separator)
+            count = collector.page_count
+            finish_title = (t("Finish now (1 page)") if count == 1
+                            else t("Finish now ({count} pages)", count=count))
+            self.menu.add(rumps.MenuItem(finish_title, callback=self._finish_clicked))
+            self.menu.add(rumps.MenuItem(t("Discard collected pages…"), callback=self._discard_clicked))
         self.menu.add(rumps.separator)
         for profile in self.profiles:
             self.menu.add(rumps.MenuItem(profile.name, callback=self._make_scan_handler(profile)))
@@ -252,11 +294,106 @@ class ScanixMenuBarApp(rumps.App):
         if hit is None:
             return
         scanner_id, overrides = hit
-        if overrides == FINISH:  # the Mac app gives FINISH a meaning in a later plan
-            return
         profile = find_profile(self.profiles, HARDWARE_BUTTON_PROFILE_NAME)
+        if self._collecting_profile(scanner_id, profile):
+            if overrides == FINISH:
+                self._start_finish()
+            else:
+                self._start_page_scan(replace(profile, scanner=scanner_id), overrides)
+            return
+        if overrides == FINISH:  # only the 8800F collecting into a PDF gives FINISH a meaning
+            return
         if profile is not None:
             self._start_scan(replace(profile, scanner=scanner_id, **overrides))
+
+    def _collecting_profile(self, scanner_id: str, profile: Profile | None) -> bool:
+        """The 8800F's buttons collect pages while the Hardware Button profile
+        makes PDFs and collecting is available."""
+        return (getattr(self, "_collector", None) is not None and profile is not None
+                and scanner_id == CANOSCAN_8800F_ID and profile.format == "pdf")
+
+    def _start_page_scan(self, profile: Profile, overrides: dict) -> bool:
+        """Scans one button page into the open collection on a worker thread.
+        Busy-guarded like _start_scan; a press during a scan is ignored."""
+        if self._scanning:
+            return False
+        self._scanning = True
+        self._show("scanning")
+        threading.Thread(target=self._page_scan_thread, args=(profile, overrides), daemon=True).start()
+        return True
+
+    def _page_scan_thread(self, profile: Profile, overrides: dict):
+        try:
+            outcome = self._collector.scan_page(profile, overrides)
+        except Exception as e:  # noqa: BLE001 - must never leave _scanning stuck
+            outcome = PageOutcome(False, self._collector.page_count, False, str(e))
+        AppHelper.callAfter(self._on_page_scanned, outcome)
+
+    def _on_page_scanned(self, outcome: PageOutcome):
+        self._scanning = False
+        if not outcome.ok:
+            rumps.notification(title=t("Scan failed"), subtitle="", message=display_message(outcome.message))
+        elif outcome.first_page:
+            rumps.notification(title="scanix500", subtitle="",
+                               message=t("Collecting pages. Press FINISH when you are done."))
+        self._show(self._resting_state())
+        self._rebuild_menu()
+
+    def _start_finish(self) -> bool:
+        """Merges (and OCRs) the collected pages on a worker thread, under the
+        same busy guard as a scan."""
+        if self._scanning or getattr(self, "_collector", None) is None or not self._collector.is_open:
+            return False
+        self._scanning = True
+        self._show("scanning")
+        threading.Thread(target=self._finish_thread, daemon=True).start()
+        return True
+
+    def _finish_thread(self):
+        try:
+            outcome = self._collector.finish()
+        except Exception as e:  # noqa: BLE001 - must never leave _scanning stuck
+            outcome = FinishOutcome(None, self._collector.page_count, False, str(e))
+        AppHelper.callAfter(self._on_finished, outcome)
+
+    def _on_finished(self, outcome: FinishOutcome):
+        self._scanning = False
+        if outcome.path is None:
+            rumps.notification(title=t("Scan failed"), subtitle="", message=outcome.message)
+        else:
+            if outcome.pages == 1:
+                message = t("1 page scanned: {name}", name=outcome.path.name)
+            else:
+                message = t("{count} pages scanned: {name}", count=outcome.pages, name=outcome.path.name)
+            if not outcome.searchable and outcome.message:  # OCR failed; the PDF is kept
+                message += "\n" + t("The scan is finished, but the text could not be recognised.")
+            rumps.notification(title=t("Scan complete"), subtitle="", message=message)
+        self._show(self._resting_state())
+        self._rebuild_menu()
+
+    def _collect_tick(self, _sender):
+        """rumps timer on the main thread: finishes a collection that has been
+        idle for the timeout (expired() is False while anything runs)."""
+        collector = getattr(self, "_collector", None)
+        if collector is not None and not self._scanning and collector.expired():
+            self._start_finish()
+
+    def _finish_clicked(self, _sender):
+        self._start_finish()
+
+    def _discard_clicked(self, _sender):
+        collector = getattr(self, "_collector", None)
+        if self._scanning or collector is None or not collector.is_open:
+            return
+        count = collector.page_count
+        title = t("Discard 1 collected page?") if count == 1 else t("Discard {count} collected pages?", count=count)
+        answer = rumps.alert(title=title, message=t("The pages cannot be restored."),
+                             ok=t("Discard"), cancel=t("Cancel"))
+        if answer != 1:
+            return
+        collector.discard()
+        self._show(self._resting_state())
+        self._rebuild_menu()
 
     def _read_buttons(self, retry: bool, present: set[tuple[int, int]]) -> tuple[str, dict] | None:
         """Reads every plugged-in scanner's buttons (blocking; worker thread).

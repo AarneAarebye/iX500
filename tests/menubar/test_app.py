@@ -1,10 +1,12 @@
+import tempfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
 pytest.importorskip("rumps")
 
+from scanix500.menubar.collecting import FinishOutcome, PageOutcome
 from scanix500.menubar.profiles import Profile
 from scanix500.menubar.runner import ScanResult
 
@@ -48,6 +50,8 @@ def test_init_survives_bridge_startup_oserror():
         patch("scanix500.menubar.app.load_bridge_destination", return_value="/tmp/scans"),
         patch("scanix500.menubar.app.default_bridge_destination_path", return_value="/tmp/scanix500-test-bridge-destination.txt"),
         patch("scanix500.menubar.app.default_pairing_path", return_value=Path("/tmp/scanix500-test-paired-browsers.json")),
+        patch("scanix500.menubar.app.default_collection_folder", return_value=Path(tempfile.mkdtemp()) / "collection"),
+        patch("scanix500.menubar.app.default_collection_config_path", return_value=Path("/tmp/scanix500-test-no-collection.json")),
         patch("scanix500.menubar.app.start_bridge_server", side_effect=OSError("Address already in use")),
         patch("scanix500.menubar.app.rumps.notification") as notification,
     ):
@@ -70,6 +74,8 @@ def test_init_survives_bridge_startup_valueerror():
         patch("scanix500.menubar.app.load_bridge_destination", return_value="/tmp/scans"),
         patch("scanix500.menubar.app.default_bridge_destination_path", return_value="/tmp/scanix500-test-bridge-destination.txt"),
         patch("scanix500.menubar.app.default_pairing_path", return_value=Path("/tmp/scanix500-test-paired-browsers.json")),
+        patch("scanix500.menubar.app.default_collection_folder", return_value=Path(tempfile.mkdtemp()) / "collection"),
+        patch("scanix500.menubar.app.default_collection_config_path", return_value=Path("/tmp/scanix500-test-no-collection.json")),
         patch("scanix500.menubar.app.start_bridge_server", side_effect=ValueError("invalid literal for int()")),
         patch("scanix500.menubar.app.rumps.notification") as notification,
     ):
@@ -171,6 +177,7 @@ def _poller_app(profile, started):
     app._scanning = False
     app._button_reading = False
     app._button_devices = {}
+    app._collector = None
     app._ticks_since_resolve_attempt = 0
     app.profiles = [profile]
     app._start_scan = lambda p, on_done=None: started.append(p) or True
@@ -353,6 +360,7 @@ def test_a_finish_press_starts_no_scan_for_now():
 
     app = ScanixMenuBarApp.__new__(ScanixMenuBarApp)
     app._button_reading = True
+    app._collector = None
     app.profiles = []
     app._start_scan = MagicMock()
     app._on_buttons_read(("sane:canoscan-8800f", FINISH))
@@ -400,3 +408,326 @@ def test_a_missing_icon_file_falls_back_to_the_emoji_titles():
         with patch.object(app_module.rumps, "notification"):
             app._on_scan_complete(ScanResult(ok=True, partial=False, message="ok", output_paths=[]))
     assert app.icon is None and app.title == app_module.IDLE_TITLE
+
+
+# -- collecting 8800F button pages -----------------------------------------
+
+class _FakeCollector:
+    def __init__(self, pages=0):
+        self.page_count = pages
+        self.calls = []
+        self.page_outcome = None
+        self.finish_outcome = None
+        self.is_expired = False
+
+    @property
+    def is_open(self):
+        return self.page_count > 0
+
+    def expired(self):
+        return self.is_expired
+
+    def scan_page(self, profile, overrides):
+        self.calls.append(("scan_page", profile, overrides))
+        if isinstance(self.page_outcome, Exception):
+            raise self.page_outcome
+        if self.page_outcome.ok:
+            self.page_count = self.page_outcome.pages
+        return self.page_outcome
+
+    def finish(self):
+        self.calls.append(("finish",))
+        if isinstance(self.finish_outcome, Exception):
+            raise self.finish_outcome
+        if self.finish_outcome.path is not None:
+            self.page_count = 0
+        return self.finish_outcome
+
+    def discard(self):
+        self.calls.append(("discard",))
+        self.page_count = 0
+
+
+def _collecting_app(pages=0, **profile_changes):
+    from scanix500.menubar.app import ScanixMenuBarApp
+
+    app = _icon_app()
+    app._button_reading = True
+    app._collector = _FakeCollector(pages)
+    app.profiles = [_hardware_profile(format="pdf", **profile_changes)]
+    app._rebuilds = 0
+    app._rebuild_menu = lambda: setattr(app, "_rebuilds", app._rebuilds + 1)
+    return app
+
+
+@pytest.fixture
+def sync(monkeypatch):
+    """Worker threads and AppHelper.callAfter run immediately; notifications are recorded."""
+    from scanix500.menubar import app as app_module
+
+    notes = []
+    monkeypatch.setattr(app_module.threading, "Thread", _SyncThread)
+    monkeypatch.setattr(app_module.AppHelper, "callAfter", lambda fn, *a: fn(*a))
+    monkeypatch.setattr(app_module.rumps, "notification",
+                        lambda title, subtitle, message: notes.append((title, message)))
+    return notes
+
+
+CANO = "sane:canoscan-8800f"
+
+
+def test_collecting_profile_only_for_the_8800f_with_a_pdf_profile():
+    app = _collecting_app()
+    assert app._collecting_profile(CANO, app.profiles[0]) is True
+    assert app._collecting_profile(CANO, _hardware_profile(format="jpeg")) is False
+    assert app._collecting_profile(CANO, _hardware_profile(format="png")) is False
+    assert app._collecting_profile("sane:ix500", app.profiles[0]) is False
+    assert app._collecting_profile(CANO, None) is False
+    app._collector = None
+    assert app._collecting_profile(CANO, app.profiles[0]) is False
+
+
+def test_button_routes_to_page_scan_finish_or_the_old_scan_path():
+    from scanix500.menubar.button_watcher import FINISH
+
+    app = _collecting_app()
+    app._start_scan, app._start_page_scan, app._start_finish = Mock(), Mock(), Mock()
+
+    app._on_buttons_read((CANO, {"color_mode": "bw"}))
+    assert app._start_page_scan.call_count == 1
+    profile, overrides = app._start_page_scan.call_args.args
+    assert profile.scanner == CANO and overrides == {"color_mode": "bw"}
+    app._start_scan.assert_not_called()
+
+    app._on_buttons_read((CANO, FINISH))
+    app._start_finish.assert_called_once_with()
+
+    app._on_buttons_read(("sane:ix500", {}))
+    assert app._start_scan.call_count == 1
+    app._on_buttons_read(("sane:ix500", FINISH))
+    assert app._start_scan.call_count == 1 and app._start_finish.call_count == 1
+
+    app.profiles = [_hardware_profile(format="jpeg")]
+    app._on_buttons_read((CANO, {"color_mode": "bw"}))
+    assert app._start_scan.call_count == 2 and app._start_page_scan.call_count == 1
+    app._on_buttons_read((CANO, FINISH))  # jpeg: FINISH means nothing
+    assert app._start_finish.call_count == 1 and app._start_scan.call_count == 2
+
+
+def test_a_press_while_scanning_starts_neither_page_nor_finish(sync):
+    app = _collecting_app(pages=2)
+    app._scanning = True
+    assert app._start_page_scan(app.profiles[0], {}) is False
+    assert app._start_finish() is False
+    assert app._collector.calls == [] and app._scanning is True
+
+
+def test_first_page_notifies_and_shows_collecting_with_the_count(sync):
+    app = _collecting_app()
+    app._collector.page_outcome = PageOutcome(True, 1, True, "")
+    assert app._start_page_scan(app.profiles[0], {"color_mode": "bw"}) is True
+    assert app._scanning is False
+    assert app.icon.endswith("collecting.png") and app.title == "1"
+    assert sync == [("scanix500", "Collecting pages. Press FINISH when you are done.")]
+    assert app._rebuilds == 1
+    assert app._collector.calls[0][2] == {"color_mode": "bw"}
+
+    app._collector.page_outcome = PageOutcome(True, 2, False, "")
+    app._start_page_scan(app.profiles[0], {})
+    assert app.title == "2" and len(sync) == 1  # later pages: no notification
+    assert app._rebuilds == 2
+
+
+def test_a_failed_page_scan_notifies_and_returns_to_collecting_or_idle(sync):
+    app = _collecting_app(pages=2)
+    app._collector.page_outcome = PageOutcome(False, 2, False, "Scanner jammed")
+    app._start_page_scan(app.profiles[0], {})
+    assert sync == [("Scan failed", "Scanner jammed")]
+    assert app.icon.endswith("collecting.png") and app.title == "2" and app._scanning is False
+
+    app = _collecting_app(pages=0)
+    app._collector.page_outcome = PageOutcome(False, 0, False, "Scanner jammed")
+    app._start_page_scan(app.profiles[0], {})
+    assert app.icon.endswith("idle.png") and app.title == "" and app._scanning is False
+
+
+def test_an_exception_in_the_page_worker_never_leaves_scanning_set(sync):
+    app = _collecting_app()
+    app._collector.page_outcome = RuntimeError("boom")
+    app._start_page_scan(app.profiles[0], {})
+    assert app._scanning is False
+    assert sync == [("Scan failed", "boom")]
+    assert app.icon.endswith("idle.png")
+
+
+def test_finish_shows_scanning_then_idle_and_notifies_the_page_count_and_name(sync):
+    app = _collecting_app(pages=3)
+    seen = []
+    real_finish = app._collector.finish
+    app._collector.finish = lambda: seen.append((app.icon, app._scanning)) or real_finish()
+    app._collector.finish_outcome = FinishOutcome(Path("/tmp/scans/scan_1.pdf"), 3, True, "")
+    assert app._start_finish() is True
+    assert seen[0][0].endswith("scanning.png") and seen[0][1] is True
+    assert app.icon.endswith("idle.png") and app.title == "" and app._scanning is False
+    assert sync == [("Scan complete", "3 pages scanned: scan_1.pdf")]
+    assert app._rebuilds == 1
+
+
+def test_finish_of_a_single_page_uses_the_singular_text(sync):
+    app = _collecting_app(pages=1)
+    app._collector.finish_outcome = FinishOutcome(Path("/tmp/scan_1.pdf"), 1, True, "")
+    app._start_finish()
+    assert sync == [("Scan complete", "1 page scanned: scan_1.pdf")]
+
+
+def test_a_failed_finish_notifies_and_returns_to_collecting(sync):
+    app = _collecting_app(pages=3)
+    app._collector.finish_outcome = FinishOutcome(None, 3, False, "Destination missing")
+    app._start_finish()
+    assert sync == [("Scan failed", "Destination missing")]
+    assert app.icon.endswith("collecting.png") and app.title == "3" and app._scanning is False
+
+    app = _collecting_app(pages=3)
+    app._collector.finish_outcome = RuntimeError("boom")
+    app._start_finish()
+    assert app._scanning is False and app.icon.endswith("collecting.png")
+
+
+def test_finish_without_text_recognition_says_so(sync):
+    app = _collecting_app(pages=2)
+    app._collector.finish_outcome = FinishOutcome(Path("/tmp/scan_1.pdf"), 2, False, "tesseract missing")
+    app._start_finish()
+    title, message = sync[0]
+    assert title == "Scan complete"
+    assert "2 pages scanned: scan_1.pdf" in message
+    assert "the text could not be recognised" in message
+
+
+def test_finish_with_skip_ocr_does_not_claim_ocr_failed(sync):
+    app = _collecting_app(pages=2)
+    app._collector.finish_outcome = FinishOutcome(Path("/tmp/scan_1.pdf"), 2, False, "")
+    app._start_finish()
+    assert "recognised" not in sync[0][1]
+
+
+def test_collect_tick_finishes_only_an_expired_collection_when_idle(sync):
+    app = _collecting_app(pages=2)
+    app._collector.finish_outcome = FinishOutcome(Path("/tmp/scan_1.pdf"), 2, True, "")
+    app._collect_tick(None)
+    assert app._collector.calls == []
+    app._collector.is_expired = True
+    app._scanning = True
+    app._collect_tick(None)
+    assert app._collector.calls == []
+    app._scanning = False
+    app._collect_tick(None)
+    assert app._collector.calls == [("finish",)]
+
+
+def test_start_up_with_a_recovered_collection_shows_collecting(tmp_path):
+    from scanix500.menubar import app as app_module
+
+    fake = _FakeCollector(pages=2)
+    with (
+        patch.object(app_module, "load_profiles", return_value=[Profile(name="Default", destination="/tmp/scans")]),
+        patch.object(app_module, "default_profiles_path", return_value="/tmp/scanix500-test-profiles.json"),
+        patch.object(app_module, "load_bridge_destination", return_value="/tmp/scans"),
+        patch.object(app_module, "default_bridge_destination_path", return_value="/tmp/scanix500-test-bridge-destination.txt"),
+        patch.object(app_module, "default_pairing_path", return_value=tmp_path / "paired.json"),
+        patch.object(app_module, "default_collection_folder", return_value=tmp_path / "collection"),
+        patch.object(app_module, "default_collection_config_path", return_value=tmp_path / "collection.json"),
+        patch.object(app_module, "MacCollector", return_value=fake),
+        patch.object(app_module, "start_bridge_server", side_effect=OSError("in use")),
+        patch.object(app_module.rumps, "notification"),
+    ):
+        app = app_module.ScanixMenuBarApp()
+    assert app.icon.endswith("collecting.png") and app.title == "2"
+    titles = [item.title for item in app.menu.values() if hasattr(item, "title")]
+    assert "Finish now (2 pages)" in titles and "Discard collected pages…" in titles
+
+
+def test_start_up_without_a_collection_folder_runs_the_old_way(tmp_path):
+    from scanix500.menubar import app as app_module
+
+    with (
+        patch.object(app_module, "load_profiles", return_value=[Profile(name="Default", destination="/tmp/scans")]),
+        patch.object(app_module, "default_profiles_path", return_value="/tmp/scanix500-test-profiles.json"),
+        patch.object(app_module, "load_bridge_destination", return_value="/tmp/scans"),
+        patch.object(app_module, "default_bridge_destination_path", return_value="/tmp/scanix500-test-bridge-destination.txt"),
+        patch.object(app_module, "default_pairing_path", return_value=tmp_path / "paired.json"),
+        patch.object(app_module, "default_collection_folder", return_value=tmp_path / "collection"),
+        patch.object(app_module, "MacCollector", side_effect=OSError("read-only")),
+        patch.object(app_module, "start_bridge_server", side_effect=OSError("in use")),
+        patch.object(app_module.rumps, "notification"),
+    ):
+        app = app_module.ScanixMenuBarApp()
+    assert app._collector is None
+    assert app.icon.endswith("idle.png")
+    assert app._start_finish() is False
+
+
+def _rebuilt(app):
+    """Runs the real _rebuild_menu against a real rumps menu; returns its titles."""
+    from scanix500.menubar import app as app_module
+
+    app._menu = app_module.rumps.rumps.Menu()
+    app.quit_button = None
+    app._app_started = False
+    app._bridge_server = None
+    app.pairing = Mock()
+    del app._rebuild_menu  # use the class method
+    app._rebuild_menu()
+    return [item.title for item in app.menu.values() if hasattr(item, "title")]
+
+
+def test_menu_has_the_collection_items_only_while_a_collection_is_open():
+    app = _collecting_app(pages=3)
+    titles = _rebuilt(app)
+    assert "Finish now (3 pages)" in titles and "Discard collected pages…" in titles
+    status = titles.index("Not listening (scan bridge unavailable)")
+    assert titles.index("Finish now (3 pages)") > status
+    assert titles.index("Finish now (3 pages)") < titles.index(app.profiles[0].name)
+
+    app = _collecting_app(pages=1)
+    assert "Finish now (1 page)" in _rebuilt(app)
+
+    app = _collecting_app(pages=0)
+    titles = _rebuilt(app)
+    assert not any(str(x).startswith(("Finish now", "Discard collected")) for x in titles)
+
+
+def test_discard_asks_first_and_only_discards_on_ok(sync):
+    from scanix500.menubar import app as app_module
+
+    app = _collecting_app(pages=3)
+    with patch.object(app_module.rumps, "alert", return_value=0) as alert:
+        app._discard_clicked(None)
+    assert alert.call_args.kwargs["title"] == "Discard 3 collected pages?"
+    assert alert.call_args.kwargs["ok"] == "Discard"
+    assert app._collector.calls == [] and app._collector.page_count == 3
+
+    with patch.object(app_module.rumps, "alert", return_value=1):
+        app._discard_clicked(None)
+    assert app._collector.calls == [("discard",)]
+    assert app.icon.endswith("idle.png") and app.title == ""
+    assert app._rebuilds == 1
+
+
+def test_discard_is_ignored_while_scanning():
+    from scanix500.menubar import app as app_module
+
+    app = _collecting_app(pages=3)
+    app._scanning = True
+    with patch.object(app_module.rumps, "alert") as alert:
+        app._discard_clicked(None)
+    alert.assert_not_called()
+    assert app._collector.calls == []
+
+
+def test_collecting_state_falls_back_to_the_emoji_and_the_count():
+    from scanix500.menubar import app as app_module
+
+    app = _collecting_app(pages=4)
+    with patch.object(app_module, "icon_path", return_value=None):
+        app._show("collecting")
+    assert app.icon is None and app.title == f"{app_module.COLLECTING_TITLE} 4"

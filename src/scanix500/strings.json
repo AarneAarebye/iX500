@@ -558,5 +558,93 @@
     "zh-Hans": "扫描未生成可用的页面。",
     "zh-Hant": "掃描未產生可用的頁面。",
     "hy": "Սկանավորումը օգտագործելի էջ չտվեց։"
+  },
+  "Finish now ({count} pages)": {
+    "de": "Jetzt fertigstellen ({count} Seiten)",
+    "es": "Terminar ahora ({count} páginas)",
+    "fr": "Terminer maintenant ({count} pages)",
+    "zh-Hans": "立即完成（{count} 页）",
+    "zh-Hant": "立即完成（{count} 頁）",
+    "hy": "Ավարտել հիմա ({count} էջ)"
+  },
+  "Finish now (1 page)": {
+    "de": "Jetzt fertigstellen (1 Seite)",
+    "es": "Terminar ahora (1 página)",
+    "fr": "Terminer maintenant (1 page)",
+    "zh-Hans": "立即完成（1 页）",
+    "zh-Hant": "立即完成（1 頁）",
+    "hy": "Ավարտել հիմա (1 էջ)"
+  },
+  "Discard collected pages…": {
+    "de": "Gesammelte Seiten verwerfen…",
+    "es": "Descartar las páginas reunidas…",
+    "fr": "Abandonner les pages collectées…",
+    "zh-Hans": "放弃已收集的页面…",
+    "zh-Hant": "捨棄已收集的頁面…",
+    "hy": "Հրաժարվել հավաքված էջերից…"
+  },
+  "Collecting pages. Press FINISH when you are done.": {
+    "de": "Seiten werden gesammelt. Drücken Sie FINISH, wenn Sie fertig sind.",
+    "es": "Reuniendo páginas. Pulse FINISH cuando termine.",
+    "fr": "Collecte des pages en cours. Appuyez sur FINISH quand vous avez terminé.",
+    "zh-Hans": "正在收集页面。完成后请按 FINISH。",
+    "zh-Hant": "正在收集頁面。完成後請按 FINISH。",
+    "hy": "Էջերը հավաքվում են։ Ավարտելիս սեղմեք FINISH։"
+  },
+  "{count} pages scanned: {name}": {
+    "de": "{count} Seiten gescannt: {name}",
+    "es": "{count} páginas escaneadas: {name}",
+    "fr": "{count} pages numérisées : {name}",
+    "zh-Hans": "已扫描 {count} 页：{name}",
+    "zh-Hant": "已掃描 {count} 頁：{name}",
+    "hy": "Սկանավորվել է {count} էջ՝ {name}"
+  },
+  "1 page scanned: {name}": {
+    "de": "1 Seite gescannt: {name}",
+    "es": "1 página escaneada: {name}",
+    "fr": "1 page numérisée : {name}",
+    "zh-Hans": "已扫描 1 页：{name}",
+    "zh-Hant": "已掃描 1 頁：{name}",
+    "hy": "Սկանավորվել է 1 էջ՝ {name}"
+  },
+  "Discard {count} collected pages?": {
+    "de": "{count} gesammelte Seiten verwerfen?",
+    "es": "¿Descartar las {count} páginas reunidas?",
+    "fr": "Abandonner les {count} pages collectées ?",
+    "zh-Hans": "放弃已收集的 {count} 页？",
+    "zh-Hant": "捨棄已收集的 {count} 頁？",
+    "hy": "Հրաժարվե՞լ հավաքված {count} էջից։"
+  },
+  "Discard 1 collected page?": {
+    "de": "1 gesammelte Seite verwerfen?",
+    "es": "¿Descartar la página reunida?",
+    "fr": "Abandonner la page collectée ?",
+    "zh-Hans": "放弃已收集的 1 页？",
+    "zh-Hant": "捨棄已收集的 1 頁？",
+    "hy": "Հրաժարվե՞լ հավաքված 1 էջից։"
+  },
+  "The pages cannot be restored.": {
+    "de": "Die Seiten lassen sich nicht wiederherstellen.",
+    "es": "Las páginas no se pueden recuperar.",
+    "fr": "Les pages ne pourront pas être restaurées.",
+    "zh-Hans": "这些页面无法恢复。",
+    "zh-Hant": "這些頁面無法復原。",
+    "hy": "Էջերը հնարավոր չէ վերականգնել։"
+  },
+  "Discard": {
+    "de": "Verwerfen",
+    "es": "Descartar",
+    "fr": "Abandonner",
+    "zh-Hans": "放弃",
+    "zh-Hant": "捨棄",
+    "hy": "Հրաժարվել"
+  },
+  "The scan is finished, but the text could not be recognised.": {
+    "de": "Der Scan ist fertig, aber der Text konnte nicht erkannt werden.",
+    "es": "El escaneo ha terminado, pero no se pudo reconocer el texto.",
+    "fr": "La numérisation est terminée, mais le texte n'a pas pu être reconnu.",
+    "zh-Hans": "扫描已完成，但无法识别文字。",
+    "zh-Hant": "掃描已完成，但無法辨識文字。",
+    "hy": "Սկանավորումն ավարտվեց, բայց տեքստը չճանաչվեց։"
   }
 }
