@@ -8,6 +8,7 @@ import socket
 import ssl
 import threading
 from collections.abc import Callable
+from contextlib import contextmanager
 from http.server import ThreadingHTTPServer
 
 from scanix500.menubar.bridge import RemoteOptions, ScanBusyError, make_handler_class
@@ -31,6 +32,16 @@ class ServerScanTrigger:
     @property
     def busy(self) -> bool:
         return self._lock.locked()
+
+    @contextmanager
+    def exclusive(self):
+        """Hold the one-scan-at-a-time lock (ScanBusyError when a scan runs)."""
+        if not self._lock.acquire(blocking=False):
+            raise ScanBusyError()
+        try:
+            yield
+        finally:
+            self._lock.release()
 
     def trigger(self, profile: Profile) -> ScanResult:
         if not self._lock.acquire(blocking=False):
@@ -97,7 +108,7 @@ class _DualStackServer(ThreadingHTTPServer):
 
 
 def start_remote_server(config: ServerConfig, backend, pairing, remote: RemoteOptions,
-                        context: ssl.SSLContext) -> ThreadingHTTPServer:
+                        context: ssl.SSLContext, button_scans=None) -> ThreadingHTTPServer:  # button_scans: used from Task 5
     handler = make_handler_class(lambda: str(config.scans_path), None, pairing, backend, remote=remote)
     handler.timeout = 60  # a client that stalls mid-request can't hold a thread forever
     httpd = _DualStackServer(("::", config.port), handler)

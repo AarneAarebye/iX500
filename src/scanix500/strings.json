@@ -454,5 +454,77 @@
     "zh-Hans": "未监听（扫描桥不可用）",
     "zh-Hant": "未監聽（掃描橋不可用）",
     "hy": "Չի լսում (սկանավորման կամուրջն անհասանելի է)"
+  },
+  "Button scans: collecting {count} pages (closes in {minutes} min)": {
+    "de": "Tasten-Scans: {count} Seiten gesammelt (schließt in {minutes} Min.)",
+    "es": "Escaneos por botón: {count} páginas reunidas (se cierra en {minutes} min)",
+    "fr": "Scans par bouton : {count} pages collectées (clôture dans {minutes} min)",
+    "zh-Hans": "按键扫描：已收集 {count} 页（{minutes} 分钟后结束）",
+    "zh-Hant": "按鍵掃描：已收集 {count} 頁（{minutes} 分鐘後結束）",
+    "hy": "Կոճակով սկաններ՝ հավաքվել է {count} էջ (կփակվի {minutes} ր հետո)"
+  },
+  "Button scans: nothing collected": {
+    "de": "Tasten-Scans: nichts gesammelt",
+    "es": "Escaneos por botón: nada reunido",
+    "fr": "Scans par bouton : rien de collecté",
+    "zh-Hans": "按键扫描：未收集任何内容",
+    "zh-Hant": "按鍵掃描：未收集任何內容",
+    "hy": "Կոճակով սկաններ՝ ոչինչ չի հավաքվել"
+  },
+  "Waiting for pickup: {count}": {
+    "de": "Wartet auf Abholung: {count}",
+    "es": "Esperando recogida: {count}",
+    "fr": "En attente de récupération : {count}",
+    "zh-Hans": "等待取走：{count}",
+    "zh-Hant": "等待取走：{count}",
+    "hy": "Սպասում է վերցնելուն՝ {count}"
+  },
+  "Button scans: (run with sudo to see them)": {
+    "de": "Tasten-Scans: (mit sudo ausführen, um sie zu sehen)",
+    "es": "Escaneos por botón: (ejecute con sudo para verlos)",
+    "fr": "Scans par bouton : (exécutez avec sudo pour les voir)",
+    "zh-Hans": "按键扫描：（用 sudo 运行以查看）",
+    "zh-Hant": "按鍵掃描：（用 sudo 執行以查看）",
+    "hy": "Կոճակով սկաններ՝ (տեսնելու համար գործարկեք sudo-ով)"
+  },
+  "No button scans are waiting.": {
+    "de": "Keine Tasten-Scans warten.",
+    "es": "No hay escaneos por botón en espera.",
+    "fr": "Aucun scan par bouton n'attend.",
+    "zh-Hans": "没有等待中的按键扫描。",
+    "zh-Hant": "沒有等待中的按鍵掃描。",
+    "hy": "Սպասող կոճակով սկաններ չկան։"
+  },
+  "{name}  {pages} pages  {created}": {
+    "de": "{name}  {pages} Seiten  {created}",
+    "es": "{name}  {pages} páginas  {created}",
+    "fr": "{name}  {pages} pages  {created}",
+    "zh-Hans": "{name}  {pages} 页  {created}",
+    "zh-Hant": "{name}  {pages} 頁  {created}",
+    "hy": "{name}  {pages} էջ  {created}"
+  },
+  "Throw away {count} collected pages? [y/N] ": {
+    "de": "{count} gesammelte Seiten verwerfen? [j/N] ",
+    "es": "¿Descartar {count} páginas reunidas? [s/N] ",
+    "fr": "Jeter {count} pages collectées ? [o/N] ",
+    "zh-Hans": "丢弃已收集的 {count} 页？[y/N] ",
+    "zh-Hant": "捨棄已收集的 {count} 頁？[y/N] ",
+    "hy": "Ջնջե՞լ հավաքված {count} էջը։ [y/N] "
+  },
+  "Discarded the open collection.": {
+    "de": "Die offene Sammlung wurde verworfen.",
+    "es": "Se descartó la colección abierta.",
+    "fr": "La collection ouverte a été jetée.",
+    "zh-Hans": "已丢弃未完成的收集。",
+    "zh-Hant": "已捨棄未完成的收集。",
+    "hy": "Բաց հավաքածուն ջնջվեց։"
+  },
+  "Button scan refused: less than 200 MB free.": {
+    "de": "Tasten-Scan abgelehnt: weniger als 200 MB frei.",
+    "es": "Escaneo por botón rechazado: menos de 200 MB libres.",
+    "fr": "Scan par bouton refusé : moins de 200 Mo libres.",
+    "zh-Hans": "按键扫描被拒绝：可用空间不足 200 MB。",
+    "zh-Hant": "按鍵掃描被拒絕：可用空間不足 200 MB。",
+    "hy": "Կոճակով սկանը մերժվեց՝ ազատ է 200 ՄԲ-ից պակաս։"
   }
 }

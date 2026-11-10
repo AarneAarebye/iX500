@@ -74,3 +74,49 @@ def test_status_without_permission_to_read_the_state(state, capsys, monkeypatch)
     out = capsys.readouterr().out
     assert "Fingerprint: (run with sudo" in out and "Paired computers: (run with sudo" in out
     assert "Scanner: fujitsu:ScanSnap iX500:1" in out
+
+
+def _pdf(path):
+    from PIL import Image
+    Image.new("RGB", (60, 80)).save(path, "PDF")
+    return path
+
+
+def test_status_shows_button_scans(state, capsys, monkeypatch):
+    from scanix500.collection import CollectionSettings, ScanCollection
+    from scanix500.server.button_scans import ButtonScanStore
+    monkeypatch.setattr("scanix500.server.cli.resolve_device_name", lambda: None)
+    main(["status"]); out = capsys.readouterr().out
+    assert "Button scans: nothing collected" in out and "Waiting for pickup: 0" in out
+    c = ScanCollection(state / "collection")
+    c.add_page(_pdf(state / "a.pdf"), CollectionSettings(False, ["eng"], "sane:canoscan-8800f"))
+    c.add_page(_pdf(state / "b.pdf"), CollectionSettings(False, ["eng"], "sane:canoscan-8800f"))
+    ButtonScanStore(state / "button-scans").add(_pdf(state / "c.pdf"), "scan_x.pdf", 1, skip_ocr=True, languages=[])
+    main(["status"]); out = capsys.readouterr().out
+    assert "Button scans: collecting 2 pages (closes in 10 min)" in out and "Waiting for pickup: 1" in out
+
+
+def test_button_scans_list_and_discard_open(state, capsys, monkeypatch):
+    from scanix500.collection import CollectionSettings, ScanCollection
+    from scanix500.server.button_scans import ButtonScanStore
+    ButtonScanStore(state / "button-scans").add(_pdf(state / "c.pdf"), "scan_x.pdf", 3, skip_ocr=True, languages=[])
+    assert main(["button-scans", "list"]) == 0
+    assert "scan_x.pdf" in capsys.readouterr().out
+    c = ScanCollection(state / "collection")
+    c.add_page(_pdf(state / "a.pdf"), CollectionSettings(False, ["eng"], "sane:canoscan-8800f"))
+    monkeypatch.setattr("builtins.input", lambda *_: "n")
+    assert main(["button-scans", "discard-open"]) == 1
+    assert ScanCollection(state / "collection").page_count == 1
+    monkeypatch.setattr("builtins.input", lambda *_: "y")
+    assert main(["button-scans", "discard-open"]) == 0
+    assert ScanCollection(state / "collection").page_count == 0
+
+
+def test_fake_run_does_not_start_the_collector(state, monkeypatch):
+    import threading
+    started = []
+    monkeypatch.setattr("scanix500.server.cli.ButtonCollector.start", lambda self: started.append(1))
+    main(["init"])
+    monkeypatch.setattr(threading.Event, "wait", lambda self, *a: True)
+    assert main(["run", "--fake-scanners"]) == 0
+    assert started == []
