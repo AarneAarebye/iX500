@@ -16,7 +16,7 @@ After a press of a CanoScan 8800F button, the scan needs about 8 s until the fir
 ### Pi (`scanix500-server` 0.10.1)
 
 - `ButtonCollector` (`server/buttons.py`) keeps a counter `seq` (starts at 0 on each server start, memory only) and the name of the last pressed button: `color`, `bw`, `custom` or `finish`. When a press is read, the counter is bumped and the name set **before** the scan or the finish starts.
-- `/health` gets `"buttonEvent": {"seq": <int>, "button": "<name>"}` when button scans are enabled (next to `"buttonScans": true`); before the first press `seq` is 0 and `button` is absent.
+- `/health` gets `"buttonEvent": {"seq": <int>, "button": "<name>"}` when button scans are enabled (next to `"buttonScans": true`) **and the request carries a valid pairing token** (the existing `paired` check). Unpaired callers do not see the field. Before the first press `seq` is 0 and `button` is absent.
 - Optional setting `button_feedback_command` in the server config (default empty). When set, the collector runs it on each press without a shell (the string is split like a shell command line), with the button name as the last argument, in a background thread, killed after 5 s. Failures and timeouts are logged and never delay or fail the scan. The command is administrator configuration, not network input.
 - `scanix500-server status` shows the setting. README and `docs/raspberry-pi.md` get a short section with an example.
 
@@ -26,17 +26,17 @@ After a press of a CanoScan 8800F button, the scan needs about 8 s until the fir
 - It remembers the last `seq` per server. The first value after start-up or after a reconnect is only stored. A larger `seq`, or a smaller one (the server restarted), with a `button` name plays a sound. Several presses between two polls play one sound.
 - Sound: one short system sound for COLOR, B&W and CUSTOM, a different one for FINISH (fixed choices, no setting for which sound).
 - Menu item "Sound on button press" (check mark, on by default), stored in the helper's settings. Texts in all seven languages in `Localizable.xcstrings`.
-- `PROTOCOL.md` documents `buttonEvent` as an optional field of `/health`.
+- `PROTOCOL.md` documents `buttonEvent` as an optional field of `/health`, sent only to paired callers. The helper sends its token on the health poll (it does for paired servers today; verify in the plan).
 
 ## Errors
 
-- A server without `buttonEvent` (0.10.0): no sound, polling still at 1 s. No error.
+- A server without `buttonEvent` (0.10.0), or a helper that is not paired with it: no sound, polling still at 1 s. No error.
 - A sound that cannot play is ignored.
 - Malformed `buttonEvent` (wrong types): ignored.
 
 ## Tests
 
-- Pi: a press bumps `seq` and sets `button` before the scan call; the feedback command is called with the button name, a failing or hanging command does not delay the scan, an empty setting runs nothing; `/health` shows the field; config parsing of the new key.
+- Pi: `/health` without a valid token has no `buttonEvent`, with a valid token it has; a press bumps `seq` and sets `button` before the scan call; the feedback command is called with the button name, a failing or hanging command does not delay the scan, an empty setting runs nothing; `/health` shows the field; config parsing of the new key.
 - Helper: first reading does not play; increase plays once; decrease (restart) plays; several presses between polls play once; FINISH plays the other sound; the switch off plays nothing; missing or malformed field plays nothing; the idle poll interval is 1 s.
 - Hardware (manual): COLOR, B&W, CUSTOM and FINISH each make the Mac sound within about 1 s of the press, the scan runs as before; with `button_feedback_command` set to a command that writes a line to a file, the line appears per press.
 
