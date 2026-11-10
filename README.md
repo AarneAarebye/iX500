@@ -86,7 +86,7 @@ commands for that session.
 To run scanix500 from an installed copy rather than this checkout (so
 switching branches here doesn't change the scanner software in use):
 
-    scripts/install-app.sh v0.10.6
+    scripts/install-app.sh v0.11.0
 
 It installs that tag into `/Applications/Dossiary/scanix500/` (a new
 `venvs/<version>-<time>` folder, with `venv` pointing at it), points the
@@ -119,11 +119,31 @@ It uses SANE's `pixma` backend, which `sane-backends` includes. Scanners are
 listed in Dossiary only while they are plugged in (the USB bus is checked, SANE
 is not opened), so an unplugged scanner disappears from the picker. On the Pi, SANE is limited to the `fujitsu`, `epjitsu` and `pixma` backends (`/etc/scanix500/sane.d/dll.conf`), because network discovery added about 8 s to every scan.
 
-- **On the Mac**, its three PDF scan buttons start a scan with the "Hardware
-  Button" profile, like the iX500's button: COLOR scans in color, BLACK & WHITE
-  in black & white, CUSTOM uses the profile as it is. COPY, PHOTO/FILM, E-MAIL
-  and FINISH do nothing. Feeder settings in that profile (both sides, split on
-  blank pages) don't apply to the glass and are ignored.
+- **On the Mac** (scanix500 0.11.0), the menu bar app collects pages like the
+  Pi does, as long as the "Hardware Button" profile makes PDFs. COLOR scans one
+  page in color, BLACK & WHITE in black & white, CUSTOM uses the profile as it
+  is; each page goes into an open collection. FINISH closes it into one PDF
+  named `scan_<date>_<time>.pdf` in the profile's folder (the folder the
+  profile had when the first page was scanned), recognises the text once over
+  the whole PDF, and shows a notification. COPY, PHOTO/FILM and E-MAIL do
+  nothing, and FINISH with nothing collected does nothing. Feeder settings in
+  that profile (both sides, split on blank pages) don't apply to the glass and
+  are ignored. A JPEG or PNG Hardware Button profile keeps the old behaviour:
+  every press is its own single scan. The iX500's Scan button is unchanged.
+  - While pages are collected the menu bar shows the "collecting" icon with the
+    page count; during a scan, merge or OCR it shows the "scanning" icon. The
+    first page shows a notification "Collecting pages. Press FINISH when you
+    are done."
+  - The menu gets "Finish now (N pages)" and "Discard collected pages…" (asks
+    first) below the status line while a collection is open.
+  - After 10 minutes without a press the collection is finished by itself.
+    Change that with `{"collect_timeout_minutes": 1}` (whole minutes, at least 1)
+    in `~/Library/Application Support/scanix500/collection.json`, read at start-up.
+  - Pages live in `~/Library/Application Support/scanix500/collection/` (scratch
+    scans in `collection-tmp/`). Quitting the app keeps them: after a restart
+    the count shows again and FINISH delivers them. Nothing is discarded
+    except by "Discard collected pages…"; a page or PDF that cannot be used is
+    kept in `collection-tmp/kept` or `collection/damaged`.
 - **On `scanix500-server`** it appears in Dossiary Scan Helper like any scanner,
   and its buttons collect pages (scanix500 0.10.0). COLOR, BLACK & WHITE and
   CUSTOM each scan one page into an open collection (COLOR and BLACK & WHITE at
@@ -134,8 +154,7 @@ is not opened), so an unplugged scanner disappears from the picker. On the Pi, S
   Helper 0.6.0 or later picks it up (planned, a separate plan in
   dossiary-scan-helper). Until then the PDFs wait on the Pi: for 30 days, or until
   a client deletes them. Nothing is ever discarded by the server. Not done yet:
-  the Mac menu bar app collecting pages the same way (a later plan) and the
-  helper's pickup. The server's own button (pairing computers) stays the iX500's.
+  the helper's pickup. The server's own button (pairing computers) stays the iX500's.
   `server.conf` keys (`[server]`): `collect_timeout_minutes` (default 10, at
   least 1), `button_custom_mode` (`gray`, `color` or `bw`; default `gray`),
   `button_custom_resolution` (150, 300 or 600; default 300; 1200 is refused, an A4 page would be over the 100-megapixel limit).
@@ -166,6 +185,13 @@ is not opened), so an unplugged scanner disappears from the picker. On the Pi, S
   - [ ] Restart the service with 2 pages collected: they are kept.
   - [ ] `scanix500-server status` shows the open collection and the waiting PDFs.
   - [ ] Hot-plug warning unchanged (see below).
+- **Hardware check of Mac collecting** (manual, to be run by the user):
+  - [ ] Press COLOR, BLACK & WHITE and CUSTOM, then FINISH: ONE 3-page PDF appears in the Hardware Button folder, with the right modes and a text layer.
+  - [ ] With `collect_timeout_minutes` set to 1 in `collection.json`: collect two pages, then wait; the collection closes by itself.
+  - [ ] Quit the app with two pages collected and start it again: the count shows and FINISH delivers them.
+  - [ ] "Finish now" and "Discard collected pages…" in the menu work.
+  - [ ] A JPEG or PNG Hardware Button profile keeps the old one-scan behaviour.
+  - [ ] The iX500's Scan button is unchanged.
 - On the Raspberry Pi, plug scanners in while it is switched off: hot-plugging
   one has frozen the Pi until its power was cut.
 
