@@ -166,8 +166,13 @@ Pi 3.5 mm jack ── audio cable ── powered speaker AUX in
 ```
 
 The jack gives line level, right for powered speakers; headphones are fine,
-passive speakers need an amplifier. A Pi 3/4 jack carries audio only, no
-microphone.
+passive speakers need an amplifier. The jack carries stereo audio (its fourth pole is composite video, not a
+microphone), so use a plain stereo cable.
+
+In an Argon ONE M.2 case the case's interface board moves the jack to the
+back panel next to the two full-size HDMI ports; a slim or right-angle plug
+fits best. The case's top hatch gives access to the GPIO pins if you would
+rather drive an LED from `button_feedback_command`.
 
 Steps:
 
