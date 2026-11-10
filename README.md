@@ -181,7 +181,7 @@ To make the Pi itself react, set a command in `/etc/scanix500/server.conf`
 (section `[server]`; restart the service after a change):
 
 ```
-button_feedback_command = /usr/local/bin/beep
+button_feedback_command = /usr/bin/scanix500-beep
 ```
 
 The server runs it with the button name as its last argument (`color`, `bw`,
@@ -211,7 +211,8 @@ microphone), so use a plain stereo cable.
 In an Argon ONE M.2 case the case's interface board moves the jack to the
 back panel next to the two full-size HDMI ports; a slim or right-angle plug
 fits best. The case's top hatch gives access to the GPIO pins if you would
-rather drive an LED from `button_feedback_command`.
+rather drive an LED from `button_feedback_command`. The service user `scanix500` is not in group `gpio`, and the case itself
+uses GPIO4 (power button) and GPIO2/3 (I2C for the fan).
 
 Steps:
 

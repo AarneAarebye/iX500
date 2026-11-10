@@ -35,8 +35,8 @@ def write(path: Path, samples: list[int]) -> None:
 def main() -> None:
     out = Path(__file__).resolve().parent.parent / "packaging" / "debian" / "sounds"
     out.mkdir(parents=True, exist_ok=True)
-    write(out / "press.wav", tone(880, 0.120))
-    write(out / "finish.wav", tone(660, 0.120) + silence(0.040) + tone(990, 0.120))
+    write(out / "press.wav", silence(0.150) + tone(880, 0.120))
+    write(out / "finish.wav", silence(0.150) + tone(660, 0.120) + silence(0.040) + tone(990, 0.120))
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ SOUNDS=${SCANIX500_SOUNDS:-/usr/share/scanix500/sounds}
 dev=${SCANIX500_BEEP_DEVICE:-}
 if [ "${1:-}" = "-D" ]; then
     dev=${2:-}
-    shift 2 2>/dev/null || shift $#
+    if [ $# -ge 2 ]; then shift 2; else shift $#; fi
 fi
 button=${1:-}
 
@@ -20,5 +20,5 @@ case "$button" in
     *) file=$SOUNDS/press.wav ;;
 esac
 
-aplay -q ${dev:+-D "$dev"} "$file" >/dev/null 2>&1 || true
+aplay -q ${dev:+-D "$dev"} "$file" >/dev/null || true
 exit 0

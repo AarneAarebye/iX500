@@ -128,3 +128,33 @@ def test_beep_never_fails(tmp_path):
     assert r.returncode == 0
     r, _ = _run_beep(tmp_path, "color", aplay_body="exit 3")
     assert r.returncode == 0
+
+
+def test_beep_shows_aplay_errors_but_exits_zero(tmp_path):
+    r, _ = _run_beep(tmp_path, "color", aplay_body='[ "$1" = -l ] && exit 0; echo "no such device" >&2; exit 1')
+    assert r.returncode == 0
+    assert b"no such device" in r.stderr
+
+
+def test_beep_dash_alone_exits_zero(tmp_path):
+    r, _ = _run_beep(tmp_path, "-D")
+    assert r.returncode == 0
+
+
+def test_beep_autodetects_headphones(tmp_path):
+    body = '[ "$1" = -l ] && { echo "card 2: Headphones [bcm2835 Headphones]"; exit 0; }; printf "%s\\n" "$*" >> "$LOG"'
+    _, calls = _run_beep(tmp_path, "color", aplay_body=body)
+    assert calls == [f"-q -D plughw:CARD=Headphones {SOUNDS}/press.wav"]
+
+
+def test_beep_env_device_wins(tmp_path, monkeypatch):
+    body = '[ "$1" = -l ] && { echo Headphones; exit 0; }; printf "%s\\n" "$*" >> "$LOG"'
+    monkeypatch.setenv("SCANIX500_BEEP_DEVICE", "plughw:3,0")
+    # _run_beep builds its own env, so run directly
+    bindir = tmp_path / "bin"; bindir.mkdir()
+    fake = bindir / "aplay"; fake.write_text(f"#!/bin/sh\n{body}\n"); fake.chmod(0o755)
+    log = tmp_path / "l"
+    env = {"PATH": f"{bindir}:/usr/bin:/bin", "LOG": str(log), "SCANIX500_SOUNDS": str(SOUNDS),
+           "SCANIX500_BEEP_DEVICE": "plughw:3,0"}
+    subprocess.run(["/bin/sh", str(BEEP), "bw"], env=env, check=True)
+    assert log.read_text().splitlines() == [f"-q -D plughw:3,0 {SOUNDS}/press.wav"]
