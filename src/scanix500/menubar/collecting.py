@@ -16,9 +16,10 @@ from pathlib import Path
 from pypdf import PdfReader
 
 from scanix500.collection import CollectionSettings, ScanCollection
+from scanix500.i18n import t
 from scanix500.menubar.profiles import Profile
 from scanix500.menubar.runner import run_scan
-from scanix500.pdf_builder import OCR_LANGUAGE, OcrFailed, ocr_pdf
+from scanix500.pdf_builder import OCR_LANGUAGE, ocr_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +96,8 @@ class MacCollector:
         return self._collection.is_open
 
     def expired(self) -> bool:
+        if self._lock.locked():  # a scan, finish or discard is running
+            return False
         return self._collection.expired(self._timeout)
 
     def scan_page(self, profile: Profile, overrides: dict) -> PageOutcome:
@@ -124,7 +127,7 @@ class MacCollector:
                 self._cleanup(folder)
             if not added:
                 return PageOutcome(False, self._collection.page_count, False,
-                                   "The scan produced no usable page.")
+                                   t("The scan produced no usable page."))
             return PageOutcome(True, self._collection.page_count, not was_open, "")
 
     def finish(self) -> FinishOutcome:
@@ -132,7 +135,7 @@ class MacCollector:
             settings = self._collection.settings
             pages = self._collection.page_count
             if settings is None or pages == 0:
-                return FinishOutcome(None, 0, False, "No pages collected.")
+                return FinishOutcome(None, 0, False, t("No pages collected."))
             stamp = datetime.fromtimestamp(self._clock()).strftime("%Y-%m-%d_%H%M%S")
             destination = Path(settings.destination)
             name, n = f"scan_{stamp}.pdf", 2
@@ -150,10 +153,7 @@ class MacCollector:
             try:
                 self._ocr(out, tmp, list(settings.ocr_languages))
                 os.replace(tmp, out)
-            except OcrFailed as e:
-                tmp.unlink(missing_ok=True)
-                return FinishOutcome(out, pages, False, str(e))
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:  # noqa: BLE001 (OcrFailed or anything else)
                 tmp.unlink(missing_ok=True)
                 return FinishOutcome(out, pages, False, str(e))
             return FinishOutcome(out, pages, True, "")

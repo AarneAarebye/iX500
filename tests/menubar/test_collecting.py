@@ -20,8 +20,13 @@ class Clock:
         return self.t
 
 
-def make_pdf(path: Path, color="white"):
-    Image.new("RGB", (40, 40), color).save(path, "PDF")
+def make_pdf(path: Path, width=40, pages=1):
+    imgs = [Image.new("RGB", (width, 40), "white") for _ in range(pages)]
+    imgs[0].save(path, "PDF", save_all=True, append_images=imgs[1:])
+
+
+def widths(path: Path):
+    return [round(float(p.mediabox.width)) for p in PdfReader(str(path)).pages]
 
 
 class FakeRun:
@@ -41,7 +46,13 @@ class FakeRun:
             p.write_text("hello")
             return ScanResult(ok=True, partial=False, message="", output_paths=[str(p)])
         p = dest / f"s{len(self.profiles)}.pdf"
-        make_pdf(p)
+        if self.mode == "multi":
+            make_pdf(p, pages=2)
+        elif self.mode == "raise":
+            (dest / "stray.pdf").write_text("junk")
+            raise RuntimeError("boom")
+        else:
+            make_pdf(p, width=40 + 10 * len(self.profiles))
         return ScanResult(ok=True, partial=False, message="", output_paths=[str(p)])
 
 
@@ -53,6 +64,7 @@ class FakeOcr:
     def __call__(self, inp, out, languages):
         self.calls.append((Path(inp), Path(out), list(languages)))
         if self.fail:
+            Path(out).write_bytes(b"partial")
             raise OcrFailed("no ocrmypdf")
         Path(out).write_bytes(Path(inp).read_bytes())
 
@@ -99,6 +111,44 @@ def test_failed_scan(env):
     assert (out.ok, out.message, out.pages) == (False, "Cover open", 1)
     assert col.page_count == 1
     assert not Path(run.profiles[-1].destination).exists()
+    run.mode = "ok"
+    col.scan_page(profile, {})
+    assert widths(col.finish().path) == [50, 70]
+
+
+def test_run_raising(env):
+    col, run, _, _, profile, _, tmp = env
+    run.mode = "raise"
+    out = col.scan_page(profile, {})
+    assert out.ok is False and "boom" in out.message and col.page_count == 0
+    assert not Path(run.profiles[-1].destination).exists()
+    assert len(list((tmp / "scratch" / "kept").glob("*stray.pdf"))) == 1
+
+
+def test_multipage_result_is_parked(env):
+    col, run, _, _, profile, _, tmp = env
+    run.mode = "multi"
+    out = col.scan_page(profile, {})
+    assert out.ok is False and col.page_count == 0
+    assert len(list((tmp / "scratch" / "kept").glob("*.pdf"))) == 1
+
+
+def test_not_expired_while_busy(env):
+    col, run, _, clock, profile, _, _ = env
+    col.scan_page(profile, {})
+    seen = []
+    inner = run.__call__
+
+    def slow(p):
+        clock.t += 10_000
+        seen.append(col.expired())
+        return inner(p)
+
+    col._run = slow
+    col.scan_page(profile, {})
+    assert seen == [False]
+    clock.t += 600
+    assert col.expired()
 
 
 @pytest.mark.parametrize("mode", ["nofile", "notpdf"])
@@ -119,7 +169,7 @@ def test_finish_merges_and_ocrs(env):
     out = col.finish()
     assert out.path.parent == dest and out.path.name.startswith("scan_") and out.path.suffix == ".pdf"
     assert (out.pages, out.searchable, out.message) == (3, True, "")
-    assert len(PdfReader(str(out.path)).pages) == 3
+    assert len(widths(out.path)) == 3 and widths(out.path) == sorted(widths(out.path)) == [50, 60, 70]
     assert len(ocr.calls) == 1 and ocr.calls[0][2] == ["deu", "eng"]
     assert col.page_count == 0 and not col.is_open
     assert not list(dest.glob("*.tmp"))
@@ -144,6 +194,7 @@ def test_ocr_failure_keeps_pdf(env):
     assert out.path and out.path.exists() and not out.searchable and out.message
     assert col.page_count == 0
     assert not list(out.path.parent.glob("*.tmp"))
+    assert [p.name for p in out.path.parent.iterdir()] == [out.path.name]
 
 
 def test_missing_destination_keeps_collection(env):
@@ -185,10 +236,11 @@ def test_restart(env):
 
 
 def test_discard(env):
-    col, _, _, _, profile, _, _ = env
+    col, _, _, _, profile, _, tmp = env
     col.scan_page(profile, {})
     col.discard()
     assert col.page_count == 0 and not col.is_open
+    assert list((tmp / "col").iterdir()) == []
 
 
 def test_load_collect_timeout(tmp_path):

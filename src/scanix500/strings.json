@@ -542,5 +542,21 @@
     "zh-Hans": "已丢弃未完成收集中的 {count} 页。",
     "zh-Hant": "已捨棄未完成收集中的 {count} 頁。",
     "hy": "Բաց հավաքածուի {count} էջը ջնջվեց։"
+  },
+  "No pages collected.": {
+    "de": "Keine Seiten gesammelt.",
+    "es": "No se han reunido páginas.",
+    "fr": "Aucune page collectée.",
+    "zh-Hans": "没有已收集的页面。",
+    "zh-Hant": "沒有已收集的頁面。",
+    "hy": "Էջեր չեն հավաքվել։"
+  },
+  "The scan produced no usable page.": {
+    "de": "Der Scan hat keine brauchbare Seite geliefert.",
+    "es": "El escaneo no produjo ninguna página utilizable.",
+    "fr": "Le scan n’a produit aucune page exploitable.",
+    "zh-Hans": "扫描未生成可用的页面。",
+    "zh-Hant": "掃描未產生可用的頁面。",
+    "hy": "Սկանավորումը օգտագործելի էջ չտվեց։"
   }
 }
