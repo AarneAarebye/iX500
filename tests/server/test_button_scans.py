@@ -187,3 +187,127 @@ def test_start_stop_worker(root, tmp_path):
         assert store.list()[0]["ocr"] == "done" and store.list()[0]["id"] == sid
     finally:
         store.stop()
+
+
+def test_add_across_filesystems(root, tmp_path, monkeypatch):
+    import errno
+    import os
+    store = ButtonScanStore(root, ocr=copy_ocr(), clock=Clock())
+    src = make_pdf(tmp_path / "in.pdf")
+    real = os.replace
+
+    def fake(a, b, *args, **kw):
+        if str(a) == str(src):
+            raise OSError(errno.EXDEV, "cross-device")
+        return real(a, b, *args, **kw)
+    monkeypatch.setattr(os, "replace", fake)
+    sid = store.add(src, "a.pdf", 1, skip_ocr=False, languages=[])
+    assert store.get(sid) is not None
+    assert not src.exists()
+
+
+def test_add_meta_failure_keeps_source(root, tmp_path, monkeypatch):
+    store = ButtonScanStore(root, ocr=copy_ocr(), clock=Clock())
+    src = make_pdf(tmp_path / "in.pdf")
+
+    def boom(*a, **k):
+        raise OSError("disk full")
+    monkeypatch.setattr(store, "_write_meta", boom)
+    with pytest.raises(OSError):
+        store.add(src, "a.pdf", 1, skip_ocr=False, languages=[])
+    assert src.exists()
+    assert list(root.iterdir()) == []
+
+
+def test_finalization_failure_marks_failed_once(root, tmp_path, monkeypatch):
+    import os
+    calls = []
+    store = ButtonScanStore(root, ocr=copy_ocr(calls), clock=Clock())
+    sid = add(store, tmp_path)
+    real = os.replace
+
+    def fake(a, b, *args, **kw):
+        if str(a).endswith(".ocr.tmp"):
+            raise OSError("nope")
+        return real(a, b, *args, **kw)
+    monkeypatch.setattr(os, "replace", fake)
+    assert store.run_next() is True
+    assert store.list()[0]["ocr"] == "failed"
+    assert not list(root.glob("*.ocr.tmp"))
+    assert store.run_next() is False
+    assert len(calls) == 1 and store.list()[0]["id"] == sid
+
+
+def _blocked_ocr():
+    started, release = threading.Event(), threading.Event()
+
+    def ocr(src, dst, languages):
+        shutil.copyfile(src, dst)
+        started.set()
+        release.wait(5)
+    return ocr, started, release
+
+
+def _run_in_thread(store):
+    errors = []
+
+    def go():
+        try:
+            store.run_next()
+        except BaseException as e:  # noqa: BLE001
+            errors.append(e)
+    t = threading.Thread(target=go)
+    t.start()
+    return t, errors
+
+
+def test_delete_during_ocr(root, tmp_path):
+    ocr, started, release = _blocked_ocr()
+    store = ButtonScanStore(root, ocr=ocr, clock=Clock())
+    sid = add(store, tmp_path)
+    t, errors = _run_in_thread(store)
+    assert started.wait(5)
+    assert store.delete(sid) is True
+    release.set()
+    t.join(5)
+    assert not errors
+    assert list(root.iterdir()) == []
+
+
+def test_expiry_during_ocr(root, tmp_path):
+    ocr, started, release = _blocked_ocr()
+    clock = Clock()
+    store = ButtonScanStore(root, ocr=ocr, clock=clock, retention=100)
+    add(store, tmp_path)
+    t, errors = _run_in_thread(store)
+    assert started.wait(5)
+    clock.t += 200
+    release.set()
+    t.join(5)
+    assert not errors
+    assert store.list() == []
+    assert list(root.iterdir()) == []
+
+
+def test_worker_survives_exception(root, tmp_path):
+    seen = []
+    second = threading.Event()
+
+    def ocr(src, dst, languages):
+        seen.append(1)
+        if len(seen) == 1:
+            raise RuntimeError("boom")
+        shutil.copyfile(src, dst)
+        second.set()
+    store = ButtonScanStore(root, ocr=ocr, clock=Clock())
+    store.start()
+    try:
+        add(store, tmp_path, "one.pdf")
+        for _ in range(100):
+            if seen:
+                break
+            threading.Event().wait(0.05)
+        add(store, tmp_path, "two.pdf")
+        assert second.wait(5)
+    finally:
+        store.stop()

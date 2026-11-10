@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import secrets
 import tempfile
 import threading
@@ -36,6 +37,7 @@ class ButtonScanStore:
         self._cond = threading.Condition(self._lock)
         self._thread: threading.Thread | None = None
         self._stopping = False
+        self._skip: set[str] = set()  # scans whose OCR bookkeeping failed; not retried in this process
 
     # -- file helpers (callers hold the lock) --
     def _pdf(self, scan_id: str) -> Path:
@@ -101,10 +103,21 @@ class ButtonScanStore:
             scan_id = secrets.token_urlsafe(16)
             while not ID_RE.match(scan_id) or self._pdf(scan_id).exists():
                 scan_id = secrets.token_urlsafe(16)
-            os.replace(pdf_path, self._pdf(scan_id))  # the PDF first, then the JSON that makes it visible
-            created = datetime.fromtimestamp(self._clock(), timezone.utc).isoformat()
-            self._write_meta(scan_id, {"name": name, "pages": pages, "created": created,
-                                       "ocr": "done" if skip_ocr else "pending", "languages": list(languages)})
+            tmp = self._root / f"{scan_id}.add.tmp"
+            try:
+                shutil.copyfile(pdf_path, tmp)  # copy, not move: works across filesystems
+                os.replace(tmp, self._pdf(scan_id))  # the PDF first, then the JSON that makes it visible
+                created = datetime.fromtimestamp(self._clock(), timezone.utc).isoformat()
+                self._write_meta(scan_id, {"name": name, "pages": pages, "created": created,
+                                           "ocr": "done" if skip_ocr else "pending", "languages": list(languages)})
+            except BaseException:
+                tmp.unlink(missing_ok=True)
+                self._remove(scan_id)
+                raise
+            try:
+                Path(pdf_path).unlink()
+            except OSError:
+                logger.warning("could not remove the source of a stored button scan", exc_info=True)
             self._cond.notify_all()
             return scan_id
 
@@ -135,15 +148,25 @@ class ButtonScanStore:
         with self._lock:
             return len(self._entries())
 
+    def _has_pending(self) -> bool:
+        return any(m["ocr"] in ("pending", "running") and e["id"] not in self._skip
+                   for _, e, m in self._entries())
+
     def run_next(self) -> bool:
         with self._lock:
-            job = next(((e["id"], m) for _, e, m in self._entries() if m["ocr"] in ("pending", "running")), None)
+            job = next(((e["id"], m) for _, e, m in self._entries()
+                        if m["ocr"] in ("pending", "running") and e["id"] not in self._skip), None)
             if job is None:
                 return False
             scan_id, meta = job
-            meta["ocr"] = "running"
-            self._write_meta(scan_id, meta)
             source, tmp = self._pdf(scan_id), self._root / f"{scan_id}.ocr.tmp"
+            meta["ocr"] = "running"
+            try:
+                self._write_meta(scan_id, meta)
+            except OSError:
+                logger.warning("could not mark a button scan as running", exc_info=True)
+                self._skip.add(scan_id)
+                return True
         ok = False
         try:
             self._ocr(source, tmp, list(meta["languages"]))
@@ -151,21 +174,35 @@ class ButtonScanStore:
         except Exception:  # noqa: BLE001 - OcrFailed or anything else: keep the PDF as it is
             logger.warning("OCR of a button scan failed", exc_info=True)
         with self._lock:
-            current = self._read_meta(scan_id)
-            if current is None:  # deleted or expired meanwhile
+            try:
+                current = self._read_meta(scan_id)
+                if current is None:  # deleted meanwhile
+                    tmp.unlink(missing_ok=True)
+                    return True
+                if self._clock() - current["_ts"] > self._retention:  # expired meanwhile
+                    tmp.unlink(missing_ok=True)
+                    self._remove(scan_id)
+                    return True
+                if ok:
+                    os.replace(tmp, source)
+                current["ocr"] = "done" if ok else "failed"
+                self._write_meta(scan_id, current)
+            except OSError:
+                logger.warning("could not finish OCR bookkeeping of a button scan", exc_info=True)
                 tmp.unlink(missing_ok=True)
-                return True
-            if ok:
-                os.replace(tmp, source)
-            else:
-                tmp.unlink(missing_ok=True)
-            current["ocr"] = "done" if ok else "failed"
-            self._write_meta(scan_id, current)
+                self._skip.add(scan_id)
+                try:
+                    current = self._read_meta(scan_id)
+                    if current is not None:
+                        current["ocr"] = "failed"
+                        self._write_meta(scan_id, current)
+                except OSError:
+                    logger.warning("could not mark a button scan as failed", exc_info=True)
         return True
 
     def start(self) -> None:
         with self._lock:
-            if self._thread is not None:
+            if self._thread is not None and self._thread.is_alive():
                 return
             self._stopping = False
             self._thread = threading.Thread(target=self._work, name="button-scan-ocr", daemon=True)
@@ -173,11 +210,15 @@ class ButtonScanStore:
 
     def stop(self) -> None:
         with self._lock:
-            thread, self._thread = self._thread, None
+            thread = self._thread
             self._stopping = True
             self._cond.notify_all()
         if thread is not None:
             thread.join(timeout=10)
+            if not thread.is_alive():
+                with self._lock:
+                    if self._thread is thread:
+                        self._thread = None
 
     def _work(self) -> None:
         while True:
@@ -194,4 +235,6 @@ class ButtonScanStore:
             with self._cond:
                 if self._stopping:
                     return
+                if self._has_pending():
+                    continue
                 self._cond.wait(WORKER_WAIT_SECONDS)
