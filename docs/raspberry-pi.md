@@ -128,7 +128,11 @@ lists them; to drop an open collection, stop the service first
 `sudo scanix500-server button-scans discard-open`.
 
 Plug scanners in while the Pi is switched off: hot-plugging one has frozen the
-Pi until its power was cut.
+Pi until its power was cut. This holds for the CanoScan 8800F's USB cable too:
+do not plug it in or pull it out while the Pi runs (it froze the Pi once, on
+2026-11-10). Switching the scanner on and off with its own power button is fine;
+it did not freeze the Pi in three tries, and the server finds the scanner again
+within seconds.
 
 ## Button press feedback
 
