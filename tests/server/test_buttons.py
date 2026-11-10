@@ -338,3 +338,63 @@ def test_no_press_records_nothing(tmp_path):
     r = Rig(tmp_path, [None], events=ev)
     r.tick()
     assert ev.snapshot() == {"seq": 0}
+
+
+import logging
+
+
+class FlakyRig(Rig):
+    def __init__(self, tmp_path, reads, resolve_results, **kw):
+        self.resolve_results = list(resolve_results)
+        super().__init__(tmp_path, reads, **kw)
+
+    def _resolve(self, scanner):
+        self.resolves += 1
+        return self.resolve_results.pop(0) if self.resolve_results else "pixma:dev"
+
+
+def _lines(caplog):
+    return [(r.levelname, r.getMessage()) for r in caplog.records if r.name == "scanix500.server.buttons"]
+
+
+def test_failed_resolve_logs_once_retries_after_4_ticks_and_processes_press(tmp_path, caplog):
+    caplog.set_level(logging.INFO)
+    r = FlakyRig(tmp_path, [C], [None])
+    r.tick(1)  # resolve fails
+    assert r.resolves == 1
+    r.tick(4)  # waiting
+    assert r.resolves == 1
+    r.tick(1)  # retry succeeds, press is read
+    assert r.resolves == 2
+    assert [p.color_mode for p in r.profiles] == ["color"]
+    lines = _lines(caplog)
+    assert sum(1 for lv, m in lines if lv == "WARNING") == 1
+    assert sum(1 for _, m in lines if "resolved: pixma:dev" in m) == 1
+    assert sum(1 for _, m in lines if "appeared" in m) == 1
+
+
+def test_repeated_resolve_failures_log_every_20th(tmp_path, caplog):
+    caplog.set_level(logging.INFO)
+    r = FlakyRig(tmp_path, [], [None] * 45)
+    r.tick(5 * 41)
+    warns = [m for lv, m in _lines(caplog) if lv == "WARNING"]
+    assert r.resolves >= 41
+    assert len(warns) == 3  # failures 1, 21, 41
+
+
+def test_usb_transitions_are_logged_once_each_and_idle_ticks_are_silent(tmp_path, caplog):
+    caplog.set_level(logging.INFO)
+    r = Rig(tmp_path, [])
+    r.tick(20)
+    assert len([m for _, m in _lines(caplog)]) == 2  # appeared, resolved
+    caplog.clear()
+    r.tick(10)
+    assert _lines(caplog) == []
+    r.usb = set()
+    r.tick(5)
+    assert [m for _, m in _lines(caplog)] == ["CanoScan 8800F disappeared from USB"]
+    caplog.clear()
+    r.usb = USB
+    r.tick(10)
+    msgs = [m for _, m in _lines(caplog)]
+    assert len(msgs) == 2 and "appeared" in msgs[0] and "resolved" in msgs[1]

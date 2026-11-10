@@ -30,7 +30,8 @@ logger = logging.getLogger(__name__)
 
 MIN_FREE_BYTES = 200 * 1024 * 1024
 RETRY_AFTER_SECONDS = 300  # after a failed merge or delivery
-RESOLVE_RETRY_TICKS = 20
+RESOLVE_RETRY_TICKS = 4  # ~6 s: a scanner still initialising must not swallow presses for long
+RESOLVE_FAIL_LOG_EVERY = 20  # after the first failure of an episode, log every 20th failed retry
 SETTLE_TICKS = 3  # after a (re)plug: the Pi can freeze if SANE touches a scanner just plugged in
 JOIN_SECONDS = 10
 _DEFAULT_LANGUAGES = ["deu", "eng"]
@@ -70,6 +71,8 @@ class ButtonCollector:
         self._device: str | None = None
         self._resolve_wait = 0
         self._settle_left = 0
+        self._usb_present = False
+        self._resolve_failures = 0
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._tmp = cfg.state_dir / "button-tmp"
@@ -100,9 +103,16 @@ class ButtonCollector:
         """Resolve and read inside the trigger's lock, so the scanner is never
         open here while a client's scan wants it."""
         if self._usb_id not in self._usb():
+            if self._usb_present:
+                self._usb_present = False
+                logger.info("CanoScan 8800F disappeared from USB")
             self._device = None
+            self._resolve_failures = 0
             self._settle_left = SETTLE_TICKS
             return None
+        if not self._usb_present:
+            self._usb_present = True
+            logger.info("CanoScan 8800F appeared on USB (settling for %d ticks)", SETTLE_TICKS)
         if self._settle_left > 0:
             self._settle_left -= 1
             return None
@@ -115,7 +125,14 @@ class ButtonCollector:
                     self._device = self._resolve(CANOSCAN_8800F_ID)
                     if self._device is None:
                         self._resolve_wait = RESOLVE_RETRY_TICKS
+                        if self._resolve_failures % RESOLVE_FAIL_LOG_EVERY == 0:
+                            logger.warning("CanoScan 8800F is on USB but SANE does not list it yet "
+                                           "(failed lookups: %d); trying again in a few seconds",
+                                           self._resolve_failures + 1)
+                        self._resolve_failures += 1
                         return None
+                    logger.info("CanoScan 8800F resolved: %s", self._device)
+                    self._resolve_failures = 0
                 try:
                     return self._read(self._device)
                 except Exception:

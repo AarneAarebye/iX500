@@ -204,3 +204,4 @@ aimed at a human reader.
   (`.github/workflows/deb.yml`: lintian, an install test in
   `debian:bookworm` and `debian:trixie`, then attached to the release); the package files live
   in `packaging/debian/`.
+- **Silent 8800F on the Pi (0.10.4)**: `ButtonCollector` logs state transitions only (USB appeared/disappeared, SANE device resolved, resolve failed: WARNING once per episode, then every 20th failed retry) and retries the device lookup after `RESOLVE_RETRY_TICKS = 4` (~6 s) instead of 30 s. `pixma_button_overrides` still returns None on any failure but logs the exception (first of a run of consecutive failures, then every 100th). The Mac app's own constants are unchanged.

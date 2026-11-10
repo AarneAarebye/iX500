@@ -1,10 +1,14 @@
 # src/scanix500/menubar/button_watcher.py
 from __future__ import annotations
 
+import logging
+import threading
 from collections.abc import Callable
 
 from scanix500.capture import find_canoscan_device, find_fujitsu_device
 from scanix500.scanners import CANOSCAN_8800F_ID, IX500_ID
+
+logger = logging.getLogger(__name__)
 
 _FINDERS = {IX500_ID: find_fujitsu_device, CANOSCAN_8800F_ID: find_canoscan_device}
 
@@ -79,6 +83,29 @@ def _pixma_overrides(values: dict[str, int]) -> dict | str | None:
     return None if found is None else dict(found)
 
 
+_FAIL_LOG_EVERY = 100
+_fail_lock = threading.Lock()
+_fail_run = 0  # consecutive failures of pixma_button_overrides
+
+
+def _note_pixma_success() -> None:
+    global _fail_run
+    with _fail_lock:
+        _fail_run = 0
+
+
+def _note_pixma_failure(device_name: str, exc: Exception) -> None:
+    """Log the first failure of a run and then every 100th, so a flapping
+    scanner shows up in the log without one line per poll."""
+    global _fail_run
+    with _fail_lock:
+        _fail_run += 1
+        count = _fail_run
+    if (count - 1) % _FAIL_LOG_EVERY == 0:
+        logger.warning("Reading the buttons of %s failed (%d in a row): %s: %s", device_name, count,
+                       type(exc).__name__, exc)
+
+
 def pixma_button_overrides(device_name: str) -> dict | str | None:
     """Opens the 8800F, reads its `target` option and closes it again.
     Returns None on any failure rather than raising, like button_pressed().
@@ -91,11 +118,14 @@ def pixma_button_overrides(device_name: str) -> dict | str | None:
         dev = sane.open(device_name)
         try:
             opts = {o[1]: o[0] for o in dev.get_options()}  # fresh descriptors, as in button_pressed()
-            return _pixma_overrides({"target": dev.dev.get_option(opts["target"])})
+            result = _pixma_overrides({"target": dev.dev.get_option(opts["target"])})
         finally:
             dev.close()
-    except Exception:
+    except Exception as e:
+        _note_pixma_failure(device_name, e)
         return None
+    _note_pixma_success()
+    return result
 
 
 def ix500_button_overrides(device_name: str) -> dict | None:

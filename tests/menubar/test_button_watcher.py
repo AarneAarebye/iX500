@@ -78,3 +78,60 @@ def test_each_button_scanner_has_a_reader():
 def test_pixma_button_overrides_never_raises(monkeypatch):
     monkeypatch.setitem(sys.modules, "sane", None)
     assert button_watcher.pixma_button_overrides("pixma:04A91901") is None
+
+
+class _FakeDev:
+    def __init__(self, target):
+        self.target = target
+        self.dev = self
+
+    def get_options(self):
+        return [(7, "target")]
+
+    def get_option(self, index):
+        return self.target
+
+    def close(self):
+        pass
+
+
+def _stub_sane(monkeypatch, outcomes):
+    """outcomes: list of target values or Exceptions, one per open()."""
+    import types
+    items = list(outcomes)
+
+    def open_(name):
+        o = items.pop(0)
+        if isinstance(o, Exception):
+            raise o
+        return _FakeDev(o)
+    monkeypatch.setitem(sys.modules, "sane", types.SimpleNamespace(init=lambda: None, open=open_))
+    monkeypatch.setattr(button_watcher, "_fail_run", 0)
+
+
+def _warnings(caplog):
+    return [r for r in caplog.records if r.name == button_watcher.__name__ and r.levelname == "WARNING"]
+
+
+def test_pixma_failures_are_logged_first_then_every_100th(monkeypatch, caplog):
+    _stub_sane(monkeypatch, [OSError("busy")] * 201)
+    for _ in range(201):
+        assert button_watcher.pixma_button_overrides("pixma:x") is None
+    assert len(_warnings(caplog)) == 3  # failures 1, 101, 201
+    assert "busy" in _warnings(caplog)[0].getMessage()
+
+
+def test_pixma_success_resets_the_failure_run(monkeypatch, caplog):
+    _stub_sane(monkeypatch, [OSError("a"), OSError("b"), 0, OSError("c")])
+    assert button_watcher.pixma_button_overrides("pixma:x") is None
+    assert button_watcher.pixma_button_overrides("pixma:x") is None
+    assert len(_warnings(caplog)) == 1
+    assert button_watcher.pixma_button_overrides("pixma:x") is None  # read fine, no button
+    assert button_watcher.pixma_button_overrides("pixma:x") is None  # new run
+    assert len(_warnings(caplog)) == 2
+
+
+def test_pixma_success_returns_the_button(monkeypatch, caplog):
+    _stub_sane(monkeypatch, [4])
+    assert button_watcher.pixma_button_overrides("pixma:x") == {"color_mode": "color"}
+    assert _warnings(caplog) == []
