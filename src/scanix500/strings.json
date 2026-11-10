@@ -191,6 +191,14 @@
     "zh-Hant": "配置",
     "hy": "Պրոֆիլ"
   },
+  "Scanner:": {
+    "de": "Scanner:",
+    "es": "Escáner:",
+    "fr": "Scanner :",
+    "zh-Hans": "扫描仪：",
+    "zh-Hant": "掃描器：",
+    "hy": "Սկաներ՝"
+  },
   "Name:": {
     "de": "Name:",
     "es": "Nombre:",

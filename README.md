@@ -86,7 +86,7 @@ commands for that session.
 To run scanix500 from an installed copy rather than this checkout (so
 switching branches here doesn't change the scanner software in use):
 
-    scripts/install-app.sh v0.10.5
+    scripts/install-app.sh v0.10.6
 
 It installs that tag into `/Applications/Dossiary/scanix500/` (a new
 `venvs/<version>-<time>` folder, with `venv` pointing at it), points the
@@ -488,6 +488,12 @@ is unit-tested — see `tests/menubar/test_app.py`):
       folder picker and updates the displayed destination path. Clicking
       OK with the three checkboxes in any combination creates a profile
       matching them, which appears in the menu and in `profiles.json`.
+- [ ] Scanner dropdown (0.10.6): choose "Canon CanoScan 8800F" and the
+      "Split on blank separator sheets" box greys out and unchecks; back
+      to "ScanSnap iX500" it is enabled again with its earlier state. A
+      saved 8800F profile scans single pages from the glass. Editing a
+      profile keeps its resolution, colour mode and other fields the
+      window does not show.
 - [ ] Edit Profile: the window opens pre-filled with that profile's
       current name, destination, and all three checkboxes matching its
       actual current settings (not blank/default) — this is the gap the
