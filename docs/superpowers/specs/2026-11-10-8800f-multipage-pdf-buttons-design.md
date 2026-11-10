@@ -1,6 +1,6 @@
 # CanoScan 8800F: collect pages with the PDF buttons (scanix500 0.10.0)
 
-Date: 2026-11-10. Scope: `scanix500-menubar` (the Mac). The Raspberry Pi part is a separate later spec (see "Raspberry Pi").
+Date: 2026-11-10. Scope: `scanix500-menubar` (the Mac). The Raspberry Pi part is `2026-11-10-pi-button-scans-design.md`, built first; the collection code is shared.
 
 ## Problem
 
@@ -16,7 +16,7 @@ The 8800F has three PDF scan buttons (COLOR, BLACK & WHITE, CUSTOM) and FINISH. 
 
 **Scope of the behaviour.** Only the 8800F's buttons, and only when the "Hardware Button" profile's `format` is `pdf`. For `jpeg` or `png` the buttons keep working as today (one scan, delivered at once). The iX500's feeder, its single Scan button, menu clicks and bridge (Dossiary) scans are unchanged.
 
-**New `ScanCollection`** (new file `src/scanix500/menubar/collection.py`, no AppKit, fully unit-testable). It owns a folder `~/Library/Application Support/scanix500/collection/` (a parameter for tests) with:
+**New `ScanCollection`** (new file `src/scanix500/collection.py`, shared with the Pi server (see 2026-11-10-pi-button-scans-design.md), no AppKit, fully unit-testable). It owns a folder `~/Library/Application Support/scanix500/collection/` (a parameter for tests) with:
 - `page-001.pdf`, `page-002.pdf`, …: one-page PDFs, scanned without OCR (the existing `scanix500 … --skip-ocr` run, into this folder instead of the destination);
 - `meta.json`: `started` and `last_activity` (wall-clock seconds), the page count, and the delivery settings taken from the profile at the first press: `destination`, `skip_ocr`, `scanner`. The settings do not change if the profile is edited meanwhile.
 
