@@ -32,26 +32,25 @@ def scanner_choices() -> list[tuple[str, str]]:
 
 
 def profile_for_scanner(profile: Profile, scanner_id: str) -> Profile:
-    """A copy of `profile` set to `scanner_id`. A flatbed gets single pages
-    (no duplex, no separator sheets) and only values it offers; the iX500
-    case changes nothing but the scanner."""
+    """A copy of `profile` set to `scanner_id`, for a scanner CHANGE. Only
+    values the new scanner offers are kept (else 300 dpi, colour, pdf, A4). A
+    flatbed gets single pages (no duplex, no separator sheets); a feeder gets
+    duplex back, which the profile form does not show."""
     known = get_scanner(scanner_id)
     if known is None:
         raise ValueError(f"Unknown scanner {scanner_id!r}")
     result = replace(profile, scanner=scanner_id)
-    if "feeder" in known.entry.get("sources", []):
-        return result
     entry = known.entry
-    if result.resolution not in entry.get("resolutions", []):
-        result.resolution = 300
-    if result.color_mode not in entry.get("colorModes", []):
-        result.color_mode = "color"
-    if result.format not in entry.get("formats", []):
-        result.format = "pdf"
-    if result.area not in entry.get("areas", []):
-        result.area = "a4"
-    result.duplex = False
-    result.split_on_blank = False
+    for field, key, fallback in (("resolution", "resolutions", 300), ("color_mode", "colorModes", "color"),
+                                 ("format", "formats", "pdf"), ("area", "areas", "a4")):
+        offered = entry.get(key)
+        if offered and getattr(result, field) not in offered:
+            setattr(result, field, fallback)
+    if "feeder" in entry.get("sources", []):
+        result.duplex = True
+    else:
+        result.duplex = False
+        result.split_on_blank = False
     return result
 
 

@@ -222,7 +222,11 @@ class _ProfileFormDelegate(NSObject):
             result = replace(self.existing, **fields)
         else:
             result = Profile(**fields)
-        return profile_for_scanner(result, self._selected_scanner_id())
+        chosen = self._selected_scanner_id()
+        if self.existing is None or chosen != self.existing.scanner:
+            # Only a scanner change adjusts the hidden fields; plain edits keep them.
+            result = profile_for_scanner(result, chosen)
+        return result
 
 
 def show_profile_form(existing: Profile | None, default_destination: str) -> Profile | None:

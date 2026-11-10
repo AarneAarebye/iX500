@@ -271,14 +271,20 @@ def test_offered_values_are_kept_for_8800f():
     assert (out.resolution, out.color_mode, out.format, out.area) == (1200, "bw", "png", "10x15")
 
 
-def test_back_to_ix500_only_sets_scanner():
+def test_back_to_ix500_clamps_values_and_restores_duplex():
     p = Profile(name="x", destination="/d", scanner=_scanners.CANOSCAN_8800F_ID,
                 duplex=False, resolution=1200, format="png", area="a5")
     out = profile_for_scanner(p, _scanners.IX500_ID)
+    entry = _scanners.get_scanner(_scanners.IX500_ID).entry
     assert out.scanner == _scanners.IX500_ID
-    assert out.duplex is False
-    from dataclasses import replace
-    assert out == replace(p, scanner=_scanners.IX500_ID)
+    assert out.duplex is True
+    if entry.get("resolutions"):
+        assert out.resolution in entry["resolutions"]
+    if entry.get("formats"):
+        assert out.format in entry["formats"]
+    if entry.get("areas"):
+        assert out.area in entry["areas"]
+    assert out.name == "x" and out.destination == "/d"
 
 
 def test_unknown_scanner_raises():
