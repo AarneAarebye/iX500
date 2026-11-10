@@ -91,6 +91,35 @@ newer, faster Pi shortens the background step.
 - Settings (port, the name computers see): `/etc/scanix500/server.conf`,
   then `sudo dpkg-reconfigure scanix500-server`.
 
+## CanoScan 8800F buttons (0.10.0)
+
+With the CanoScan 8800F plugged in, its COLOR, BLACK & WHITE and CUSTOM buttons
+each scan one page into an open collection; FINISH, or 10 minutes without a
+press, closes it into one PDF. The text is recognised once over the whole PDF.
+The PDF then waits on the Pi in `/var/lib/scanix500/button-scans/` until a
+helper fetches and deletes it (Dossiary Scan Helper 0.6.0 or later, planned;
+not available yet) or 30 days have passed. Pages being collected are in
+`/var/lib/scanix500/collection/`. A page is refused when less than 200 MB is
+free on that disk. Nothing is discarded by the server itself.
+
+Keys in `/etc/scanix500/server.conf` (section `[server]`; restart the service
+after a change):
+
+| Key | Default | Valid values |
+| --- | --- | --- |
+| `collect_timeout_minutes` | `10` | a whole number, 1 or more |
+| `button_custom_mode` | `gray` | `gray`, `color`, `bw` |
+| `button_custom_resolution` | `300` | `150`, `300`, `600`, `1200` |
+
+COLOR and BLACK & WHITE always scan at 300 dpi. `scanix500-server status` shows
+the open collection and how many PDFs wait; `scanix500-server button-scans list`
+lists them; to drop an open collection, stop the service first
+(`sudo systemctl stop scanix500-server`), then
+`sudo scanix500-server button-scans discard-open`.
+
+Plug scanners in while the Pi is switched off: hot-plugging one has frozen the
+Pi until its power was cut.
+
 ## Update and remove
 
 - Update: download the newer `.deb` and `sudo apt install ./…` it. Pairings,

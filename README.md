@@ -124,9 +124,34 @@ is not opened), so an unplugged scanner disappears from the picker.
   in black & white, CUSTOM uses the profile as it is. COPY, PHOTO/FILM, E-MAIL
   and FINISH do nothing. Feeder settings in that profile (both sides, split on
   blank pages) don't apply to the glass and are ignored.
-- **On `scanix500-server`** it appears in Dossiary Scan Helper like any scanner.
-  Its buttons do nothing there: the server's button (pairing computers) is
-  the iX500's only.
+- **On `scanix500-server`** it appears in Dossiary Scan Helper like any scanner,
+  and its buttons collect pages (scanix500 0.10.0). COLOR, BLACK & WHITE and
+  CUSTOM each scan one page into an open collection (COLOR and BLACK & WHITE at
+  300 dpi, CUSTOM with `button_custom_mode` and `button_custom_resolution`).
+  FINISH, or 10 minutes without a press, closes the collection into one PDF;
+  FINISH with nothing collected does nothing. The Pi recognises the text once,
+  over the whole PDF, and keeps the PDF on a waiting list until Dossiary Scan
+  Helper 0.6.0 or later picks it up (planned, a separate plan in
+  dossiary-scan-helper). Until then the PDFs wait on the Pi: for 30 days, or until
+  a client deletes them. Nothing is ever discarded by the server. Not done yet:
+  the Mac menu bar app collecting pages the same way (a later plan) and the
+  helper's pickup. The server's own button (pairing computers) stays the iX500's.
+  `server.conf` keys (`[server]`): `collect_timeout_minutes` (default 10, at
+  least 1), `button_custom_mode` (`gray`, `color` or `bw`; default `gray`),
+  `button_custom_resolution` (150, 300, 600 or 1200; default 300).
+  `scanix500-server status` shows "Button scans: collecting 3 pages (closes in
+  7 min)" and "Waiting for pickup: 2"; `scanix500-server button-scans list`
+  lists the waiting PDFs; `sudo scanix500-server button-scans discard-open`
+  throws away the open collection (stop the service first:
+  `sudo systemctl stop scanix500-server`). A page is refused when less than
+  200 MB is free on the state folder's disk.
+- **Button scan protocol** (remote mode only, bearer token required):
+  `GET /button-scans` lists the waiting PDFs (`id`, `name`, `pages`, `bytes`,
+  `created`, `ocr` as `pending|done|failed`), `GET /button-scans/<id>` returns
+  the PDF (header `X-Scanix500-Ocr: pending` while the text is not yet
+  recognised) and `DELETE /button-scans/<id>` removes it; `GET /health` adds
+  `"buttonScans": true`. Details: `docs/superpowers/specs/2026-11-10-pi-button-scans-design.md`
+  and `docs/superpowers/plans/2026-11-10-pi-button-scans.md`.
 - Its pages are not trimmed, snapped to a paper size or checked for blankness:
   the lid is white and a scan is one page. A smaller sheet leaves white margin.
 - **Photos:** a scan can come back as a JPEG or PNG instead of a PDF (`--format jpeg|png`
@@ -135,6 +160,12 @@ is not opened), so an unplugged scanner disappears from the picker.
   white (use PNG or PDF), and images are not OCR'd (Dossiary does that when it imports
   them). A scan over 100 megapixels is refused with a message, for example A4 at
   1200 dpi: choose a smaller area or a lower resolution. Film is not supported yet.
+- **Hardware check on the Pi** (manual, not done yet):
+  - [ ] Press COLOR, BLACK & WHITE and CUSTOM, then FINISH: `GET /button-scans` lists one 3-page PDF with the right modes in the right order.
+  - [ ] Press twice and wait for the timeout: the 2-page collection closes by itself.
+  - [ ] Restart the service with 2 pages collected: they are kept.
+  - [ ] `scanix500-server status` shows the open collection and the waiting PDFs.
+  - [ ] Hot-plug warning unchanged (see below).
 - On the Raspberry Pi, plug scanners in while it is switched off: hot-plugging
   one has frozen the Pi until its power was cut.
 
