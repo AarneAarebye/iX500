@@ -52,6 +52,10 @@ Only on a remote server (HTTPS port 8767), each with the usual `Authorization: B
 - macOS helper (Swift, XCTest with a stub server): pickup saves, then deletes; failing save does not delete; a name clash gets a suffix; a repeated id is saved once; an unreachable server is skipped; a pending-OCR scan waits, then is taken after 5 minutes; the folder setting persists.
 - Hardware (manual, node-000 and a real helper): press COLOR, BLACK & WHITE, CUSTOM, FINISH: one 3-page PDF appears in the chosen folder with the right modes in order and searchable text; the timeout closes a 2-page collection; restart the server with two pages collected and they are kept; pull the helper's folder away and PDFs wait on the Pi.
 
+## Amendment (2026-11-10, helper plan)
+
+The helper plan (`dossiary-scan-helper/docs/superpowers/plans/2026-11-10-macos-button-scan-pickup.md`) has no conformance-suite task: that suite tests a helper's localhost API, while the three calls are between a helper and a scan server; they are tested in this repo (`tests/server/test_button_scan_endpoints.py`) and in the helper with a stub transport. The helper takes a waiting scan by the list's `ocr` field (`done`/`failed`, or `pending` after 5 minutes), not by the `X-Scanix500-Ocr` header.
+
 ## Risks
 
 - The Pi froze once when a scanner was hot-plugged (README). The collector never opens SANE unless the 8800F is already on the USB bus at start of a press; it does not make hot-plugging safe, and the README warning stays.
