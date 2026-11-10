@@ -322,11 +322,17 @@ class ScanixMenuBarApp(rumps.App):
         threading.Thread(target=self._page_scan_thread, args=(profile, overrides), daemon=True).start()
         return True
 
+    def _safe_page_count(self) -> int:
+        try:
+            return self._collector.page_count
+        except Exception:  # noqa: BLE001 - the fallback must not raise
+            return 0
+
     def _page_scan_thread(self, profile: Profile, overrides: dict):
         try:
             outcome = self._collector.scan_page(profile, overrides)
         except Exception as e:  # noqa: BLE001 - must never leave _scanning stuck
-            outcome = PageOutcome(False, self._collector.page_count, False, str(e))
+            outcome = PageOutcome(False, self._safe_page_count(), False, str(e))
         AppHelper.callAfter(self._on_page_scanned, outcome)
 
     def _on_page_scanned(self, outcome: PageOutcome):
@@ -353,13 +359,13 @@ class ScanixMenuBarApp(rumps.App):
         try:
             outcome = self._collector.finish()
         except Exception as e:  # noqa: BLE001 - must never leave _scanning stuck
-            outcome = FinishOutcome(None, self._collector.page_count, False, str(e))
+            outcome = FinishOutcome(None, self._safe_page_count(), False, str(e))
         AppHelper.callAfter(self._on_finished, outcome)
 
     def _on_finished(self, outcome: FinishOutcome):
         self._scanning = False
         if outcome.path is None:
-            rumps.notification(title=t("Scan failed"), subtitle="", message=outcome.message)
+            rumps.notification(title=t("Scan failed"), subtitle="", message=display_message(outcome.message))
         else:
             if outcome.pages == 1:
                 message = t("1 page scanned: {name}", name=outcome.path.name)
@@ -389,8 +395,8 @@ class ScanixMenuBarApp(rumps.App):
         title = t("Discard 1 collected page?") if count == 1 else t("Discard {count} collected pages?", count=count)
         answer = rumps.alert(title=title, message=t("The pages cannot be restored."),
                              ok=t("Discard"), cancel=t("Cancel"))
-        if answer != 1:
-            return
+        if answer != 1 or self._scanning or not collector.is_open:
+            return  # a scan may have started while the dialog was open
         collector.discard()
         self._show(self._resting_state())
         self._rebuild_menu()
@@ -487,7 +493,7 @@ class ScanixMenuBarApp(rumps.App):
 
     def _on_scan_complete(self, result: ScanResult):
         self._scanning = False
-        self._show("idle")
+        self._show(self._resting_state())
         rumps.notification(title=notification_title(result), subtitle="", message=display_message(result.message))
 
     def _pair_browser(self, _sender):

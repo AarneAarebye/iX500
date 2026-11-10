@@ -352,7 +352,7 @@ def test_bridge_status_title_shows_the_listening_address_or_that_it_is_down():
     assert app._bridge_status_title() == "Not listening (scan bridge unavailable)"
 
 
-def test_a_finish_press_starts_no_scan_for_now():
+def test_a_finish_press_without_a_collector_starts_no_scan():
     from unittest.mock import MagicMock
 
     from scanix500.menubar.app import ScanixMenuBarApp
@@ -731,3 +731,70 @@ def test_collecting_state_falls_back_to_the_emoji_and_the_count():
     with patch.object(app_module, "icon_path", return_value=None):
         app._show("collecting")
     assert app.icon is None and app.title == f"{app_module.COLLECTING_TITLE} 4"
+
+
+def test_other_scans_keep_the_collecting_indicator_while_a_collection_is_open(sync):
+    app = _collecting_app(pages=2)
+    app._scanning = True
+    app._on_scan_complete(ScanResult(ok=True, partial=False, message="ok", output_paths=[]))
+    assert app.icon.endswith("collecting.png") and app.title == "2" and app._scanning is False
+
+    app = _collecting_app(pages=0)
+    app._on_scan_complete(ScanResult(ok=True, partial=False, message="ok", output_paths=[]))
+    assert app.icon.endswith("idle.png") and app.title == ""
+
+    app = _collecting_app()
+    app._collector = None
+    app._on_scan_complete(ScanResult(ok=True, partial=False, message="ok", output_paths=[]))
+    assert app.icon.endswith("idle.png")
+
+
+def test_a_raising_page_count_in_the_worker_fallbacks_never_strands_scanning(sync):
+    class _Broken(_FakeCollector):
+        def __init__(self):
+            self.calls = []
+
+        @property
+        def page_count(self):
+            raise RuntimeError("folder gone")
+
+        def scan_page(self, profile, overrides):
+            raise RuntimeError("boom")
+
+        def finish(self):
+            raise RuntimeError("boom")
+
+        @property
+        def is_open(self):
+            return True
+
+    app = _collecting_app()
+    app._collector = _Broken()
+    app._show = lambda state: None
+    app._resting_state = lambda: "idle"
+    app._start_page_scan(app.profiles[0], {})
+    assert app._scanning is False
+    app._start_finish()
+    assert app._scanning is False
+    assert [n[0] for n in sync] == ["Scan failed", "Scan failed"]
+
+
+def test_discard_does_nothing_if_a_scan_started_while_the_dialog_was_open():
+    from scanix500.menubar import app as app_module
+
+    app = _collecting_app(pages=3)
+
+    def alert(**kwargs):
+        app._scanning = True
+        return 1
+
+    with patch.object(app_module.rumps, "alert", side_effect=alert):
+        app._discard_clicked(None)
+    assert app._collector.calls == [] and app._collector.page_count == 3
+
+
+def test_a_failed_finish_translates_known_messages(sync):
+    app = _collecting_app(pages=2)
+    app._collector.finish_outcome = FinishOutcome(None, 2, False, "No pages scanned.")
+    app._start_finish()
+    assert sync == [("Scan failed", "No pages scanned.")]
