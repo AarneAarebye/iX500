@@ -194,3 +194,26 @@ def test_discard(tmp_path, src):
     assert not list(folder.glob("page-*.pdf"))
     assert not (folder / "meta.json").exists()
     assert col.settings is None
+
+
+def test_destination_defaults_to_empty():
+    assert CollectionSettings(skip_ocr=True, ocr_languages=["deu"], scanner="x").destination == ""
+
+
+def test_destination_recovered_after_restart(tmp_path, src):
+    folder = tmp_path / "c"
+    col = ScanCollection(folder)
+    s = CollectionSettings(skip_ocr=True, ocr_languages=["fra"], scanner="sane:ix500", destination="/x")
+    col.add_page(make_pdf(src / "a.pdf"), s)
+    assert ScanCollection(folder).settings.destination == "/x"
+
+
+def test_old_meta_without_destination(tmp_path, src):
+    folder = tmp_path / "c"
+    col = ScanCollection(folder)
+    col.add_page(make_pdf(src / "a.pdf"), SETTINGS)
+    meta = json.loads((folder / "meta.json").read_text())
+    del meta["settings"]["destination"]
+    (folder / "meta.json").write_text(json.dumps(meta))
+    assert ScanCollection(folder).settings == SETTINGS
+    assert ScanCollection(folder).settings.destination == ""

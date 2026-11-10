@@ -24,6 +24,7 @@ class CollectionSettings:
     skip_ocr: bool
     ocr_languages: list[str]
     scanner: str
+    destination: str = ""
 
 
 _DEFAULT_SETTINGS = CollectionSettings(
@@ -170,6 +171,7 @@ class ScanCollection:
                     skip_ocr=bool(s["skip_ocr"]),
                     ocr_languages=[str(x) for x in s["ocr_languages"]],
                     scanner=str(s["scanner"]),
+                    destination=str(s.get("destination", "")),
                 )
                 self._first_activity = float(meta["first_activity"])
                 self._last_activity = float(meta["last_activity"])
