@@ -10,6 +10,7 @@ from PIL import Image
 from scanix500.menubar.bridge import RemoteOptions, make_handler_class
 from scanix500.menubar.fakes import FakeBackend
 from scanix500.menubar.pairing import PairingStore
+from scanix500.server.button_events import ButtonEvents
 from scanix500.server.button_pairing import ButtonPairing
 from scanix500.server.button_scans import ButtonScanStore
 
@@ -21,12 +22,12 @@ def _pdf(path, width):
     return path
 
 
-def _serve(tmp_path, store, remote=True):
+def _serve(tmp_path, store, remote=True, events=None):
     pairing = PairingStore(tmp_path / "p.json")
     buttons = ButtonPairing(pairing.issue_token)
     opts = RemoteOptions(fingerprint=FP, name="pi", button_pairing=buttons) if remote else None
     handler = make_handler_class(lambda: str(tmp_path), None, pairing, FakeBackend(), remote=opts,
-                                 button_scans=store)
+                                 button_scans=store, button_events=events)
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     return httpd, f"http://127.0.0.1:{httpd.server_address[1]}", pairing.issue_token("Mac")
@@ -150,3 +151,42 @@ def test_fake_store_has_the_two_fixed_scans(tmp_path):
     from scanix500.menubar.fakes import fake_button_scan_store
     scans = fake_button_scan_store(tmp_path / "fake").list()
     assert [(s["name"], s["ocr"]) for s in scans] == [("fake-1.pdf", "done"), ("fake-2.pdf", "pending")]
+
+
+def _health(base, token=None):
+    status, raw, _ = call(base, "/health", token=token)
+    assert status == 200
+    return json.loads(raw)
+
+
+def test_health_announces_button_events_to_paired_callers(tmp_path):
+    events = ButtonEvents()
+    httpd, base, token = _serve(tmp_path, ButtonScanStore(tmp_path / "s"), events=events)
+    try:
+        assert _health(base, token)["buttonEvent"] == {"seq": 0}
+        events.record("color")
+        body = _health(base, token)
+        assert body["buttonEvent"] == {"seq": 1, "button": "color"}
+        assert body["buttonScans"] is True
+    finally:
+        httpd.shutdown()
+
+
+def test_health_hides_button_events_without_a_valid_token(tmp_path):
+    events = ButtonEvents()
+    events.record("bw")
+    httpd, base, token = _serve(tmp_path, ButtonScanStore(tmp_path / "s"), events=events)
+    try:
+        assert "buttonEvent" not in _health(base)
+        assert "buttonEvent" not in _health(base, "not-a-token")
+    finally:
+        httpd.shutdown()
+
+
+def test_health_has_no_button_event_without_a_store(tmp_path):
+    httpd, base, token = _serve(tmp_path, None, events=ButtonEvents())
+    try:
+        body = _health(base, token)
+        assert "buttonEvent" not in body and "buttonScans" not in body
+    finally:
+        httpd.shutdown()

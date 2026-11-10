@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import signal
 import sys
 import tempfile
@@ -32,6 +33,7 @@ from scanix500.menubar.fakes import FakeBackend, FakePairing, fake_button_scan_s
 from scanix500.menubar.ocr_jobs import OcrJobQueue
 from scanix500.menubar.pairing import SERVER_CODE_LIFETIME_SECONDS, SharedWindowPairingStore
 from scanix500.server.button_pairing import ButtonPairing
+from scanix500.server.button_events import ButtonEvents
 from scanix500.server.button_scans import ID_RE, ButtonScanStore
 from scanix500.server.buttons import ButtonCollector
 from scanix500.server.config import ServerConfig, load_config
@@ -72,6 +74,7 @@ def cmd_run(cfg: ServerConfig, fake: bool) -> int:
     buttons = ButtonPairing(pairing.issue_token)
     fingerprint = certificate_sha256(cfg.cert_path)
     remote = RemoteOptions(fingerprint=fingerprint, name=cfg.name, button_pairing=buttons)
+    events = ButtonEvents(shlex.split(cfg.button_feedback_command) if cfg.button_feedback_command else None)
     button_store = collector = None
     if fake:
         fake_store_dir = tempfile.TemporaryDirectory()
@@ -80,12 +83,12 @@ def cmd_run(cfg: ServerConfig, fake: bool) -> int:
         button_store = ButtonScanStore(cfg.button_scans_path)
         button_store.start()
         try:
-            collector = ButtonCollector(ScanCollection(cfg.collection_path), button_store, trigger, cfg)
+            collector = ButtonCollector(ScanCollection(cfg.collection_path), button_store, trigger, cfg, events=events)
         except Exception:  # noqa: BLE001 - the iX500 and Dossiary must keep working
             logging.exception("The button collection could not be opened (%s); running without the 8800F's buttons",
                               cfg.collection_path)
     httpd = start_remote_server(cfg, backend, pairing, remote, server_context(cfg.cert_path, cfg.key_path),
-                                button_scans=button_store)
+                                button_scans=button_store, button_events=events)
     if not fake:
         ButtonWatcher(buttons, trigger).start()
         if collector is not None:
@@ -222,6 +225,8 @@ def _button_status_lines(cfg: ServerConfig) -> list[str]:
         else:
             lines = [t("Button scans: nothing collected")]
         lines.append(t("Waiting for pickup: {count}", count=len(_waiting_scans(cfg))))
+        if cfg.button_feedback_command:
+            lines.append(t("Button feedback command: {command}", command=cfg.button_feedback_command))
         return lines
     except PermissionError:
         return [t("Button scans: (run with sudo to see them)")]

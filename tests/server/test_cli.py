@@ -223,3 +223,14 @@ def test_run_survives_a_collection_that_cannot_be_opened(state, monkeypatch):
     monkeypatch.setattr(threading.Event, "wait", lambda self, *a: True)
     assert main(["run"]) == 0
     assert started == ["w", "h"]
+
+
+def test_status_shows_the_button_feedback_command_only_when_set(state, capsys, monkeypatch):
+    monkeypatch.setattr("scanix500.server.cli.resolve_device_name", lambda: None)
+    main(["status"]); out = capsys.readouterr().out
+    assert "Button feedback command" not in out
+    conf = state.parent / "feedback.conf"
+    conf.write_text("[server]\nbutton_feedback_command = /usr/local/bin/beep\n")
+    monkeypatch.setenv("SCANIX500_CONFIG", str(conf))
+    main(["status"]); out = capsys.readouterr().out
+    assert "Button feedback command: /usr/local/bin/beep" in out

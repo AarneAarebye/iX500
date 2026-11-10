@@ -24,6 +24,7 @@ from scanix500.scanners import IX500_ID, KnownScanner, attached_scanners, get_sc
 
 if TYPE_CHECKING:
     from scanix500.server.button_pairing import ButtonPairing
+    from scanix500.server.button_events import ButtonEvents
     from scanix500.server.button_scans import ButtonScanStore
 
 logger = logging.getLogger(__name__)
@@ -253,6 +254,7 @@ class _BodyError(ValueError):
 def make_handler_class(
     get_destination: Callable[[], str], trigger: ScanTrigger | None, pairing: PairingStore, backend: V2Backend,
     remote: RemoteOptions | None = None, button_scans: "ButtonScanStore | None" = None,
+    button_events: "ButtonEvents | None" = None,
 ) -> type[BaseHTTPRequestHandler]:
     """Builds a BaseHTTPRequestHandler bound to a live destination-folder
     getter (read fresh on every version 1 request -- the "Set Bridge Scan
@@ -393,6 +395,8 @@ def make_handler_class(
                                   name=remote.name)
                     if button_scans is not None:
                         health["buttonScans"] = True
+                        if button_events is not None and token_ok:
+                            health["buttonEvent"] = button_events.snapshot()
                 self._send_json(200, health)
                 return
             if url.path == "/pair":

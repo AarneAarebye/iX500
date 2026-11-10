@@ -86,7 +86,7 @@ commands for that session.
 To run scanix500 from an installed copy rather than this checkout (so
 switching branches here doesn't change the scanner software in use):
 
-    scripts/install-app.sh v0.10.0
+    scripts/install-app.sh v0.10.1
 
 It installs that tag into `/Applications/Dossiary/scanix500/` (a new
 `venvs/<version>-<time>` folder, with `venv` pointing at it), points the
@@ -168,6 +168,26 @@ is not opened), so an unplugged scanner disappears from the picker. On the Pi, S
   - [ ] Hot-plug warning unchanged (see below).
 - On the Raspberry Pi, plug scanners in while it is switched off: hot-plugging
   one has frozen the Pi until its power was cut.
+
+### Button press feedback
+
+A press of an 8800F button is announced at once, so a helper can beep or
+flash. `GET /health` shows `"buttonEvent": {"seq": 3, "button": "color"}` to a
+paired caller only (valid pairing token; `seq` counts presses since the service
+started, `button` is `color`, `bw`, `custom` or `finish`, and `seq` alone is
+`0` before the first press). Without a valid token the field is left out.
+
+To make the Pi itself react, set a command in `/etc/scanix500/server.conf`
+(section `[server]`; restart the service after a change):
+
+```
+button_feedback_command = /usr/local/bin/beep
+```
+
+The server runs it with the button name as its last argument (`color`, `bw`,
+`custom` or `finish`), as user `scanix500`, and stops it after 5 seconds. A
+failing or slow command never delays a scan. `scanix500-server status` shows
+the configured command.
 
 ## Languages
 

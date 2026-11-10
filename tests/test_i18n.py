@@ -101,7 +101,7 @@ def test_every_key_in_the_code_is_in_the_catalog_and_back():
 
 
 def test_the_catalog_has_the_expected_size():
-    assert len(catalog()) == 66
+    assert len(catalog()) == 67
 
 
 FIELD = re.compile(r"\{[^{}]*\}")

@@ -479,6 +479,14 @@
     "zh-Hant": "等待取走：{count}",
     "hy": "Սպասում է վերցնելուն՝ {count}"
   },
+  "Button feedback command: {command}": {
+    "de": "Rückmeldungsbefehl für Tasten: {command}",
+    "es": "Comando de aviso de botones: {command}",
+    "fr": "Commande de retour des boutons : {command}",
+    "zh-Hans": "按键反馈命令：{command}",
+    "zh-Hant": "按鍵回饋指令：{command}",
+    "hy": "Կոճակների հետադարձ հրաման՝ {command}"
+  },
   "Button scans: (run with sudo to see them)": {
     "de": "Tasten-Scans: (mit sudo ausführen, um sie zu sehen)",
     "es": "Escaneos por botón: (ejecute con sudo para verlos)",
