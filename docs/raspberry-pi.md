@@ -150,6 +150,41 @@ the configured command.
 Plug scanners in while the Pi is switched off: hot-plugging one has frozen the
 Pi until its power was cut.
 
+## Sound from the Pi
+
+The package ships `scanix500-beep`, which plays a short sound when a button is
+pressed (one beep for `color`, `bw` and `custom`, a double beep for `finish`).
+
+What you need: the Pi 4's 3.5 mm jack with a powered (active) speaker or
+headphones, or a USB speaker or USB sound card. HDMI audio works too, with
+`-D plughw:0,0`.
+
+Wiring:
+
+```
+Pi 3.5 mm jack ── audio cable ── powered speaker AUX in
+```
+
+The jack gives line level, right for powered speakers; headphones are fine,
+passive speakers need an amplifier. A Pi 3/4 jack carries audio only, no
+microphone.
+
+Steps:
+
+1. Make sure `dtparam=audio=on` is in `/boot/firmware/config.txt` (reboot after
+   adding it).
+2. `aplay -l` lists the sound cards (`Headphones` is the jack, `vc4hdmi0` and
+   `vc4hdmi1` are HDMI). The beep uses `Headphones` when it exists, otherwise
+   ALSA's default; for another card use `-D`, for example
+   `button_feedback_command = /usr/bin/scanix500-beep -D plughw:1,0`.
+3. Test: `sudo -u scanix500 scanix500-beep color`
+4. Enable it in `/etc/scanix500/server.conf`, section `[server]`:
+   `button_feedback_command = /usr/bin/scanix500-beep`
+5. `sudo systemctl restart scanix500-server`
+
+Volume: `alsamixer`, or `amixer -c Headphones sset PCM 80%`. `alsa-utils` saves
+the ALSA state at shutdown.
+
 ## Update and remove
 
 - Update: download the newer `.deb` and `sudo apt install ./…` it. Pairings,

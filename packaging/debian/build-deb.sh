@@ -11,11 +11,13 @@ trap 'rm -rf "$STAGE"' EXIT
 
 install -d "$STAGE/DEBIAN" "$STAGE/usr/lib/scanix500" "$STAGE/usr/bin" \
     "$STAGE/lib/systemd/system" "$STAGE/etc/scanix500" "$STAGE/etc/scanix500/sane.d" \
-    "$STAGE/usr/share/doc/scanix500-server"
+    "$STAGE/usr/share/doc/scanix500-server" "$STAGE/usr/share/scanix500/sounds"
 cp -R "$ROOT/src/scanix500" "$STAGE/usr/lib/scanix500/"
 find "$STAGE/usr/lib/scanix500" -name __pycache__ -prune -exec rm -rf {} +
 install -m 0755 "$HERE/scanix500-server.sh" "$STAGE/usr/bin/scanix500-server"
 install -m 0755 "$HERE/scanix500.sh" "$STAGE/usr/bin/scanix500"
+install -m 0755 "$HERE/scanix500-beep.sh" "$STAGE/usr/bin/scanix500-beep"
+install -m 0644 "$HERE/sounds/press.wav" "$HERE/sounds/finish.wav" "$STAGE/usr/share/scanix500/sounds/"
 install -m 0644 "$HERE/scanix500-server.service" "$STAGE/lib/systemd/system/"
 install -m 0644 "$HERE/server.conf" "$STAGE/etc/scanix500/server.conf"
 install -m 0644 "$HERE/sane.d/dll.conf" "$STAGE/etc/scanix500/sane.d/dll.conf"

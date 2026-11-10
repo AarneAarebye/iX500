@@ -8,6 +8,9 @@ if [ "$1" = "configure" ]; then
     if getent group scanner >/dev/null; then
         adduser scanix500 scanner >/dev/null
     fi
+    if getent group audio >/dev/null; then
+        adduser scanix500 audio >/dev/null
+    fi
     install -d -o scanix500 -g scanix500 -m 0750 /var/lib/scanix500
     if [ ! -f /var/lib/scanix500/tls/cert.pem ]; then
         runuser -u scanix500 -- scanix500-server init >/dev/null
