@@ -92,3 +92,9 @@ def test_button_feedback_command_with_unbalanced_quote_is_refused(tmp_path):
     conf.write_text("[server]\nbutton_feedback_command = say \"x\n")
     with pytest.raises(ValueError, match="button_feedback_command"):
         load_config(conf)
+
+
+def test_percent_in_the_feedback_command_is_kept_literally(tmp_path):
+    conf = tmp_path / "server.conf"
+    conf.write_text("[server]\nbutton_feedback_command = /bin/sh -c 'date +%T'\n")
+    assert load_config(conf).button_feedback_command == "/bin/sh -c 'date +%T'"

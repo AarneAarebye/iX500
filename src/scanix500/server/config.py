@@ -50,7 +50,7 @@ class ServerConfig:
 
 def load_config(path: Path | None = None) -> ServerConfig:
     path = path or Path(os.environ.get("SCANIX500_CONFIG", str(DEFAULT_CONFIG)))
-    parser = configparser.ConfigParser()
+    parser = configparser.ConfigParser(interpolation=None)
     parser.read(path)  # a missing file just means the defaults
     section = parser["server"] if parser.has_section("server") else {}
     raw_port = section.get("port", str(DEFAULT_REMOTE_PORT))
