@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 from scanix500 import __version__
 from scanix500.pdf_builder import installed_ocr_languages
@@ -24,6 +24,7 @@ from scanix500.scanners import IX500_ID, KnownScanner, attached_scanners, get_sc
 
 if TYPE_CHECKING:
     from scanix500.server.button_pairing import ButtonPairing
+    from scanix500.server.button_scans import ButtonScanStore
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,17 @@ class RemoteOptions:
     fingerprint: str
     name: str
     button_pairing: "ButtonPairing"
+
+
+_UNSAFE_NAME_CHARS = re.compile(r'[^\x20-\x7e]|["\\]')
+
+
+def content_disposition(name: str) -> str:
+    """An attachment header that stays valid for any file name: an ASCII
+    fallback (quotes, backslashes, control and non-ASCII characters become
+    "_") plus the real name in RFC 5987 form."""
+    fallback = _UNSAFE_NAME_CHARS.sub("_", name)
+    return f"attachment; filename=\"{fallback}\"; filename*=UTF-8\'\'{quote(name, safe='')}"
 
 
 _ALLOWED_ORIGIN = re.compile(r"http://(localhost|127\.0\.0\.1)(?::([0-9]{1,5}))?")
@@ -240,7 +252,7 @@ class _BodyError(ValueError):
 
 def make_handler_class(
     get_destination: Callable[[], str], trigger: ScanTrigger | None, pairing: PairingStore, backend: V2Backend,
-    remote: RemoteOptions | None = None,
+    remote: RemoteOptions | None = None, button_scans: "ButtonScanStore | None" = None,
 ) -> type[BaseHTTPRequestHandler]:
     """Builds a BaseHTTPRequestHandler bound to a live destination-folder
     getter (read fresh on every version 1 request -- the "Set Bridge Scan
@@ -350,15 +362,27 @@ def make_handler_class(
             path, job_id = url.path, ""
             if path.startswith("/ocr/") and len(path) > len("/ocr/") and "/" not in path[len("/ocr/"):]:
                 job_id, path = path[len("/ocr/"):], "/ocr/<job>"
+            scan_id = None
+            if remote is not None and button_scans is not None:
+                if path == "/button-scans":
+                    pass
+                elif (path.startswith("/button-scans/") and len(path) > len("/button-scans/")
+                        and "/" not in path[len("/button-scans/"):]):
+                    scan_id, path = path[len("/button-scans/"):], "/button-scans/<id>"
             if remote is not None and (path == "/pair/button" or path.startswith("/pair/button/")):
                 self._handle_button_pair(path)
                 return
-            method = ENDPOINTS.get(path)
-            if method is None:
-                self._error(404, "There's nothing at this address.")
-                return
-            if self.command != method:
-                self._error(405, f"{url.path} only answers {method}.", allow=f"{method}, OPTIONS")
+            if scan_id is not None or (path == "/button-scans" and remote is not None and button_scans is not None):
+                methods = ("GET", "DELETE") if scan_id is not None else ("GET",)
+            else:
+                method = ENDPOINTS.get(path)
+                if method is None:
+                    self._error(404, "There's nothing at this address.")
+                    return
+                methods = (method,)
+            if self.command not in methods:
+                self._error(405, f"{url.path} only answers {' and '.join(methods)}.",
+                            allow=", ".join(methods + ("OPTIONS",)))
                 return
             token_ok = pairing.is_valid(bearer_token(self.headers.get("Authorization")))
             if url.path == "/health":
@@ -367,6 +391,8 @@ def make_handler_class(
                 if remote is not None:
                     health.update(service="scanix500-server", remote=True, fingerprint=remote.fingerprint,
                                   name=remote.name)
+                    if button_scans is not None:
+                        health["buttonScans"] = True
                 self._send_json(200, health)
                 return
             if url.path == "/pair":
@@ -378,6 +404,12 @@ def make_handler_class(
             if not token_ok:
                 self._error(401, REMOTE_NOT_PAIRED_MESSAGE if remote is not None else NOT_PAIRED_MESSAGE)
                 return
+            if path == "/button-scans" and remote is not None and button_scans is not None:
+                self._send_json(200, {"scans": button_scans.list()})
+                return
+            if scan_id is not None:
+                self._handle_button_scan(scan_id)
+                return
             if url.path == "/scanners":
                 self._send_json(200, {"scanners": backend.scanners()})
                 return
@@ -386,6 +418,41 @@ def make_handler_class(
                 self._send_json(status, response)
                 return
             self._handle_v2_scan()
+
+        def _handle_button_scan(self, scan_id: str) -> None:
+            unknown = "This scan is unknown or already deleted."
+            if self.command == "DELETE":
+                if not button_scans.delete(scan_id):
+                    self._error(404, unknown)
+                    return
+                self.send_response(204)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            found = button_scans.get(scan_id)
+            if found is None:
+                self._error(404, unknown)
+                return
+            pdf_path, entry = found
+            try:
+                with open(pdf_path, "rb") as f:
+                    size = os.fstat(f.fileno()).st_size
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/pdf")
+                    self.send_header("Content-Length", str(size))
+                    self.send_header("Content-Disposition", content_disposition(entry["name"]))
+                    if entry["ocr"] == "pending":
+                        self.send_header("X-Scanix500-Ocr", "pending")
+                    self.end_headers()
+                    remaining = size
+                    while remaining > 0 and self.command != "HEAD":
+                        chunk = f.read(min(65536, remaining))
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
+                        remaining -= len(chunk)
+            except FileNotFoundError:
+                self._error(404, unknown)  # deleted between get() and open()
 
         def _handle_v1_scan(self, query: str, token_ok: bool) -> None:
             # Version 1 (Dossiary before 1.44): query parameters, {"error"} bodies.

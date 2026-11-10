@@ -18,6 +18,7 @@ import os
 import re
 import signal
 import sys
+import tempfile
 import threading
 import time
 from xml.sax.saxutils import escape
@@ -27,7 +28,7 @@ from scanix500.i18n import choose_language, set_language, t
 from scanix500.collection import ScanCollection
 from scanix500.menubar.bridge import RealBackend, RemoteOptions
 from scanix500.menubar.button_watcher import resolve_device_name
-from scanix500.menubar.fakes import FakeBackend, FakePairing
+from scanix500.menubar.fakes import FakeBackend, FakePairing, fake_button_scan_store
 from scanix500.menubar.ocr_jobs import OcrJobQueue
 from scanix500.menubar.pairing import SERVER_CODE_LIFETIME_SECONDS, SharedWindowPairingStore
 from scanix500.server.button_pairing import ButtonPairing
@@ -72,7 +73,10 @@ def cmd_run(cfg: ServerConfig, fake: bool) -> int:
     fingerprint = certificate_sha256(cfg.cert_path)
     remote = RemoteOptions(fingerprint=fingerprint, name=cfg.name, button_pairing=buttons)
     button_store = collector = None
-    if not fake:
+    if fake:
+        fake_store_dir = tempfile.TemporaryDirectory()
+        button_store = fake_button_scan_store(fake_store_dir.name)
+    else:
         button_store = ButtonScanStore(cfg.button_scans_path)
         button_store.start()
         collector = ButtonCollector(ScanCollection(cfg.collection_path), button_store, trigger, cfg)

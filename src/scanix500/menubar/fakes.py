@@ -250,3 +250,23 @@ class FakePairing:
     def is_valid(self, token: str | None) -> bool:
         with self._lock:
             return bool(token) and token in self._tokens
+
+
+def fake_button_scan_store(root):
+    """Fake scanner mode's waiting list (PROTOCOL.md button scans): two
+    fixed one-page PDFs, "fake-1.pdf" (OCR done) and "fake-2.pdf" (OCR
+    pending, and it stays pending: the store's worker is never started), so
+    the conformance suite has something to list, fetch and delete. Testing
+    only."""
+    import tempfile
+    from pathlib import Path
+
+    from scanix500.server.button_scans import ButtonScanStore
+
+    store = ButtonScanStore(Path(root))
+    with tempfile.TemporaryDirectory() as tmp:
+        for name, skip_ocr in (("fake-1.pdf", True), ("fake-2.pdf", False)):
+            pdf = Path(tmp) / name
+            Image.new("RGB", (60, 80), "white").save(pdf, "PDF")
+            store.add(pdf, name, 1, skip_ocr=skip_ocr, languages=["eng"])
+    return store

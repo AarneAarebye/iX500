@@ -117,8 +117,9 @@ class _DualStackServer(ThreadingHTTPServer):
 
 
 def start_remote_server(config: ServerConfig, backend, pairing, remote: RemoteOptions,
-                        context: ssl.SSLContext, button_scans=None) -> ThreadingHTTPServer:  # button_scans: used from Task 5
-    handler = make_handler_class(lambda: str(config.scans_path), None, pairing, backend, remote=remote)
+                        context: ssl.SSLContext, button_scans=None) -> ThreadingHTTPServer:
+    handler = make_handler_class(lambda: str(config.scans_path), None, pairing, backend, remote=remote,
+                                 button_scans=button_scans)
     handler.timeout = 60  # a client that stalls mid-request can't hold a thread forever
     httpd = _DualStackServer(("::", config.port), handler)
     # The TLS handshake runs in each request's own thread, not in accept().
