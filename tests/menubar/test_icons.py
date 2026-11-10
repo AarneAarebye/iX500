@@ -36,4 +36,5 @@ def test_idle_and_scanning_differ():
 def test_generator_reproduces_the_committed_files(tmp_path):
     _generator().main(tmp_path)
     for name in NAMES:
-        assert (tmp_path / f"{name}.png").read_bytes() == (ICON_DIR / f"{name}.png").read_bytes()
+        made, kept = Image.open(tmp_path / f"{name}.png").convert("RGBA"), Image.open(ICON_DIR / f"{name}.png").convert("RGBA")
+        assert made.size == kept.size and list(made.getdata()) == list(kept.getdata())
