@@ -39,7 +39,7 @@ Only on a remote server (HTTPS port 8767), each with the usual `Authorization: B
 ### macOS helper
 
 - A new `ButtonScanPickup` in `HelperCore` asks each paired network server whose `/health` says `buttonScans` for its list every 5 s while the server is reachable; a server that is down is skipped silently and tried again later.
-- For each listed scan whose `ocr` is `done` or `failed` (or `pending` for more than 5 minutes): download, write to `<folder>/<name>` (`scan_<date>_<time>.pdf`; a name that exists gets ` 2`, ` 3`…), check the PDF starts with `%PDF` and the size matches, then `DELETE`. A scan already saved is recognised by its id in a small `picked-up.json` (kept 30 days), so two Macs or a retry do not write it twice from one Mac.
+- For each listed scan whose `ocr` is `done` or `failed` (or `pending` for more than 30 minutes; raised from 5 after the final review): download, write to `<folder>/<name>` (`scan_<date>_<time>.pdf`; a name that exists gets ` 2`, ` 3`…), check the PDF starts with `%PDF` and the size matches, then `DELETE`. A scan already saved is recognised by its id in a small `picked-up.json` (kept 30 days), so two Macs or a retry do not write it twice from one Mac.
 - Menu: "Folder for button scans…" (a folder chooser, remembered; default `~/Documents/Scans`, created if missing) and a notification "N pages scanned" with the file name when a PDF arrives. A missing or unwritable folder keeps the PDFs on the Pi and shows a menu line "Button scans can't be saved: <reason>". All new texts in the helper's seven languages (its string tests guard them).
 - Version: macOS helper 0.6.0.
 
@@ -49,12 +49,12 @@ Only on a remote server (HTTPS port 8767), each with the usual `Authorization: B
 - `ButtonCollector` (fake SANE reader, fake CLI run): a press of 4, 5, 6 adds a page with the right mode, 7 finishes, the timeout finishes, a press while another scan runs is not read, no device means no polling, restart resumes an open collection, disk guard.
 - Server endpoints (like `tests/server/`): list, download, delete, unknown or malformed id, no token → 401, `Origin` → refused, `buttonScans` in `/health`, older requests unchanged.
 - Conformance suite (`dossiary-scan-helper/conformance`): the new calls against the reference helper's fake server mode (`fake:` button scans, a fixed list) and against `scanix500-server` with a fake collector.
-- macOS helper (Swift, XCTest with a stub server): pickup saves, then deletes; failing save does not delete; a name clash gets a suffix; a repeated id is saved once; an unreachable server is skipped; a pending-OCR scan waits, then is taken after 5 minutes; the folder setting persists.
+- macOS helper (Swift, XCTest with a stub server): pickup saves, then deletes; failing save does not delete; a name clash gets a suffix; a repeated id is saved once; an unreachable server is skipped; a pending-OCR scan waits, then is taken after 30 minutes; the folder setting persists.
 - Hardware (manual, node-000 and a real helper): press COLOR, BLACK & WHITE, CUSTOM, FINISH: one 3-page PDF appears in the chosen folder with the right modes in order and searchable text; the timeout closes a 2-page collection; restart the server with two pages collected and they are kept; pull the helper's folder away and PDFs wait on the Pi.
 
 ## Amendment (2026-11-10, helper plan)
 
-The helper plan (`dossiary-scan-helper/docs/superpowers/plans/2026-11-10-macos-button-scan-pickup.md`) has no conformance-suite task: that suite tests a helper's localhost API, while the three calls are between a helper and a scan server; they are tested in this repo (`tests/server/test_button_scan_endpoints.py`) and in the helper with a stub transport. The helper takes a waiting scan by the list's `ocr` field (`done`/`failed`, or `pending` after 5 minutes), not by the `X-Scanix500-Ocr` header.
+The helper plan (`dossiary-scan-helper/docs/superpowers/plans/2026-11-10-macos-button-scan-pickup.md`) has no conformance-suite task: that suite tests a helper's localhost API, while the three calls are between a helper and a scan server; they are tested in this repo (`tests/server/test_button_scan_endpoints.py`) and in the helper with a stub transport. The helper takes a waiting scan by the list's `ocr` field (`done`/`failed`, or `pending` after 30 minutes), not by the `X-Scanix500-Ocr` header.
 
 ## Risks
 
