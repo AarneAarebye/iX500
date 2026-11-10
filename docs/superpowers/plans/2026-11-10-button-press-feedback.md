@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.11 (pytest) in `iX500` (`src/scanix500/server`, `menubar/bridge.py`); Swift 6 / SwiftPM / swift-testing / AppKit in `dossiary-scan-helper/macos`.
 
-Spec: `docs/superpowers/specs/2026-11-10-button-press-feedback-design.md` (iX500 repo). Tasks 1-2 are in `/Users/aarneaarebye/Projects/Paperless/iX500`, Tasks 3-4 in `/Users/aarneaarebye/Projects/Paperless/dossiary-scan-helper`. Run Python tests with `python3 -m pytest` (see `AGENTS.md`), Swift tests with `macos/scripts/test.sh`.
+Spec: `docs/superpowers/specs/2026-11-10-button-press-feedback-design.md` (iX500 repo). Tasks 1, 2 and 2b are in `/Users/aarneaarebye/Projects/Paperless/iX500`, Tasks 3-4 in `/Users/aarneaarebye/Projects/Paperless/dossiary-scan-helper`. Run Python tests with `python3 -m pytest` (see `AGENTS.md`), Swift tests with `macos/scripts/test.sh`.
 
 ## Global Constraints
 
@@ -20,6 +20,7 @@ Spec: `docs/superpowers/specs/2026-11-10-button-press-feedback-design.md` (iX500
 - User-visible helper text goes in `macos/Localization/Localizable.xcstrings` with all seven languages (en, de, es, fr, hy, zh-Hans, zh-Hant); user-visible Pi text goes in `strings.json` with all 7 languages (`tests/test_i18n.py` guards it).
 - No tokens, paths or file names in logs; never run `defaults delete`.
 - Versions: scanix500 0.10.1 (`pyproject.toml`, `src/scanix500/__init__.py`, the version strings in `tests/menubar/test_bridge.py`, README install example); helper `HelperVersion.string` 0.6.1.
+- Pi audio: opt-in (`button_feedback_command` stays empty by default); the beep script never fails loudly (always exits 0); service user `scanix500` joins group `audio`; package Depends on `alsa-utils`.
 - Commit style: `feat:`/`fix:`/`docs:`/`chore:`, each commit ending with the attribution lines from the session reminder.
 
 ---
@@ -176,6 +177,31 @@ def _button_name(overrides: dict) -> str:
 - [ ] **Step 3: Implement.** `bridge.py`: add `button_events=None` parameter to `make_handler_class`; in the `/health` branch after `health["buttonScans"] = True` add `if button_events is not None and token_ok: health["buttonEvent"] = button_events.snapshot()` (`token_ok` is already computed above). `runtime.py`: add `button_events=None` to `start_remote_server` and pass through. `cli.py`: build `events = ButtonEvents(shlex.split(cfg.button_feedback_command) if cfg.button_feedback_command else None)` in the non-fake branch (also in the fake branch so fake mode shows the field), pass `events=events` to `ButtonCollector` and `button_events=events` to `start_remote_server`. `_button_status_lines`: when `cfg.button_feedback_command` is set append `t("Button feedback command: {command}", command=cfg.button_feedback_command)`; add this string to `strings.json` in all 7 languages following the file's existing format (look at an entry such as "Waiting for pickup: {count}"). Bump version to 0.10.1 in `pyproject.toml`, `src/scanix500/__init__.py`, `tests/menubar/test_bridge.py` and the README install example (`grep -rn "0\.10\.0"` over `README.md docs tests src pyproject.toml`). Docs: README + `docs/raspberry-pi.md`: new "Button press feedback" section — the `/health` field (paired callers only), the `button_feedback_command` key with example `button_feedback_command = /usr/local/bin/beep` (script receives `color|bw|custom|finish`), 5 s limit, runs as user `scanix500`; AGENTS.md one bullet.
 - [ ] **Step 4: Run** `python3 -m pytest -q` (whole suite) → pass.
 - [ ] **Step 5: Commit** `feat: /health announces button presses to paired helpers; 0.10.1`.
+
+---
+
+### Task 2b: Pi audio wiring — `scanix500-beep` and the 3.5 mm jack (Pi packaging)
+
+User request 2026-11-10: "also provide a wiring for the pi audio". node-000 (Raspberry Pi 4) has `dtparam=audio=on` and an ALSA card `Headphones` (3.5 mm jack) besides two HDMI cards; the service user `scanix500` is in group `scanner` only (not `audio`) and `alsa-utils` provides `aplay`.
+
+**Files:**
+- Create: `packaging/debian/scanix500-beep.sh`, `packaging/debian/sounds/press.wav`, `packaging/debian/sounds/finish.wav`, `scripts/make-sounds.py` (generates the two WAVs; committed output)
+- Modify: `packaging/debian/build-deb.sh`, `packaging/debian/postinst`, `packaging/debian/control.in`, `packaging/debian/server.conf`, `README.md`, `docs/raspberry-pi.md`
+- Test: `tests/test_packaging.py` (follow its existing style)
+
+**Interfaces:**
+- Consumes: Task 1/2 `button_feedback_command` (the server appends the button name as the last argument).
+- Produces: `/usr/bin/scanix500-beep [-D <alsa device>] <color|bw|custom|finish>`; sounds in `/usr/share/scanix500/sounds/`.
+
+- [ ] **Step 1: Failing tests** in `tests/test_packaging.py`: `scanix500-beep.sh` exists, is executable and `sh -n` parses it; `build-deb.sh` installs it as `usr/bin/scanix500-beep` and the sounds to `usr/share/scanix500/sounds/`; `postinst` adds `scanix500` to `audio` (`adduser scanix500 audio`); `control.in` Depends contains `alsa-utils`; `server.conf` documents `button_feedback_command` as a commented example `# button_feedback_command = /usr/bin/scanix500-beep`; both WAV files are valid (stdlib `wave`: mono, 22050 Hz or 44100 Hz, 16 bit, between 0.05 and 1.0 s); `finish.wav` differs from `press.wav`. A shell test runs the script with a fake `aplay` first in `PATH` that records its arguments: `scanix500-beep color` calls `aplay -q <…/press.wav>`; `scanix500-beep finish` plays `finish.wav`; `-D plughw:1,0 bw` passes `-D plughw:1,0`; an unknown button name plays `press.wav`; a missing `aplay` or a failing `aplay` still exits 0 (feedback must never fail loudly). Use `SCANIX500_SOUNDS` (env, default `/usr/share/scanix500/sounds`) so the test can point the script at the repo's sounds.
+- [ ] **Step 2: Run to verify failure.**
+- [ ] **Step 3: Implement.**
+  - `scripts/make-sounds.py` (stdlib `wave`, `struct`, `math`, no numpy): `press.wav` = one 880 Hz sine, 120 ms, 22050 Hz, 16 bit mono, amplitude 0.4 with 10 ms fade in/out (no click); `finish.wav` = two tones 660 Hz then 990 Hz, 120 ms each, 40 ms gap. Run it once and commit the output.
+  - `scanix500-beep.sh` (POSIX sh): parse optional `-D device`; default device: if `SCANIX500_BEEP_DEVICE` is set use it, else prefer `plughw:CARD=Headphones` when `aplay -l` lists `Headphones`, else leave ALSA's default; choose the file by button (`finish` → `finish.wav`, anything else → `press.wav`); `exec`-free: `command -v aplay >/dev/null 2>&1 || exit 0`; `aplay -q ${dev:+-D "$dev"} "$file" >/dev/null 2>&1 || true`; always `exit 0`.
+  - `build-deb.sh`: create `usr/share/scanix500/sounds`, install the script (0755) and WAVs (0644). `postinst`: after the `adduser scanix500 scanner` line add `adduser scanix500 audio >/dev/null`. `control.in`: add `alsa-utils` to Depends. `server.conf`: add the commented example with a short comment (jack, USB speaker via `-D plughw:1,0`, choose the device from `aplay -l`; the beep runs as user `scanix500`, restart the service after changing).
+  - Docs (README + `docs/raspberry-pi.md`), a "Sound from the Pi" section: what you need (3.5 mm jack of the Pi 4 → active/powered speaker, or headphones; or a USB speaker or USB sound card; HDMI audio via `-D plughw:0,0`), the wiring as a small text diagram (`Pi 3.5 mm jack ── audio cable ── powered speaker AUX in`; note that the jack gives line-level for powered speakers, headphones are fine, passive speakers need an amplifier; a Pi 3/4 jack carries audio only, no microphone), the steps (`dtparam=audio=on` in `/boot/firmware/config.txt`, `aplay -l` to see cards, test with `sudo -u scanix500 scanix500-beep color`, enable with the `button_feedback_command` line, `sudo systemctl restart scanix500-server`), and the volume (`alsamixer` / `amixer -c Headphones sset PCM 80%`; ALSA state is saved by `alsa-utils`).
+- [ ] **Step 4: Run** `python3 -m pytest -q` → pass; `sh packaging/debian/build-deb.sh` if `dpkg-deb` is available (otherwise leave it to CI).
+- [ ] **Step 5: Commit** `feat: scanix500-beep plays a sound from the Pi when a button is pressed`.
 
 ---
 
