@@ -1,6 +1,7 @@
 import json
 import shutil
 import threading
+from pathlib import Path
 from datetime import datetime, timezone
 
 import pytest
@@ -194,15 +195,25 @@ def test_add_across_filesystems(root, tmp_path, monkeypatch):
     import os
     store = ButtonScanStore(root, ocr=copy_ocr(), clock=Clock())
     src = make_pdf(tmp_path / "in.pdf")
+    original = src.read_bytes()
     real = os.replace
+    copies = []
+    real_copy = shutil.copyfile
 
-    def fake(a, b, *args, **kw):
-        if str(a) == str(src):
+    def fake_replace(a, b, *args, **kw):
+        if Path(a).parent != root:  # a source outside the store is another filesystem
             raise OSError(errno.EXDEV, "cross-device")
         return real(a, b, *args, **kw)
-    monkeypatch.setattr(os, "replace", fake)
+
+    def spy_copy(a, b, *args, **kw):
+        copies.append((a, b))
+        return real_copy(a, b, *args, **kw)
+    monkeypatch.setattr(os, "replace", fake_replace)
+    monkeypatch.setattr(shutil, "copyfile", spy_copy)
     sid = store.add(src, "a.pdf", 1, skip_ocr=False, languages=[])
-    assert store.get(sid) is not None
+    assert copies and Path(copies[0][0]) == src
+    path, entry = store.get(sid)
+    assert path.read_bytes() == original and entry["bytes"] == len(original)
     assert not src.exists()
 
 
@@ -290,24 +301,24 @@ def test_expiry_during_ocr(root, tmp_path):
 
 
 def test_worker_survives_exception(root, tmp_path):
-    seen = []
-    second = threading.Event()
+    store = ButtonScanStore(root, ocr=copy_ocr(), clock=Clock())
+    real = store.run_next
+    raised = threading.Event()
 
-    def ocr(src, dst, languages):
-        seen.append(1)
-        if len(seen) == 1:
-            raise RuntimeError("boom")
-        shutil.copyfile(src, dst)
-        second.set()
-    store = ButtonScanStore(root, ocr=ocr, clock=Clock())
+    def flaky():
+        if not raised.is_set():
+            raised.set()
+            raise RuntimeError("worker boom")
+        return real()
+    store.run_next = flaky
     store.start()
     try:
-        add(store, tmp_path, "one.pdf")
-        for _ in range(100):
-            if seen:
+        add(store, tmp_path)
+        assert raised.wait(5)
+        for _ in range(200):
+            if store.list()[0]["ocr"] == "done":
                 break
             threading.Event().wait(0.05)
-        add(store, tmp_path, "two.pdf")
-        assert second.wait(5)
+        assert store.list()[0]["ocr"] == "done"
     finally:
         store.stop()
