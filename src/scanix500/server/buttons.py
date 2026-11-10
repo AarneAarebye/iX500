@@ -37,6 +37,33 @@ JOIN_SECONDS = 10
 _DEFAULT_LANGUAGES = ["deu", "eng"]
 
 
+def _sane_exit() -> None:
+    """Shuts SANE down so the next use starts from scratch. A long-running
+    process that keeps SANE initialised across a power-cycle of the scanner
+    keeps reading it through a stale USB handle ("Invalid argument") until the
+    service is restarted."""
+    try:
+        import sane
+
+        sane.exit()
+    except Exception:  # noqa: BLE001 - nothing to clean up if SANE never started
+        pass
+
+
+def _read_fresh(device: str) -> dict | str | None:
+    try:
+        return pixma_button_overrides(device)
+    finally:
+        _sane_exit()
+
+
+def _resolve_fresh(scanner_id: str) -> str | None:
+    try:
+        return resolve_device_name(scanner_id)
+    finally:
+        _sane_exit()
+
+
 def _free_bytes(path: Path) -> int:
     return shutil.disk_usage(path).free
 
@@ -58,8 +85,8 @@ def _button_name(overrides: dict) -> str:
 
 class ButtonCollector:
     def __init__(self, collection: ScanCollection, store: ButtonScanStore, trigger: ServerScanTrigger,
-                 cfg: ServerConfig, *, read: Callable[[str], dict | str | None] = pixma_button_overrides,
-                 resolve: Callable[[str], str | None] = resolve_device_name,
+                 cfg: ServerConfig, *, read: Callable[[str], dict | str | None] = _read_fresh,
+                 resolve: Callable[[str], str | None] = _resolve_fresh,
                  usb: Callable[[], set] = usb_ids, free_bytes: Callable[[Path], int] = _free_bytes,
                  clock: Callable[[], float] = time.time, interval: float = 1.5,
                  events: ButtonEvents | None = None):

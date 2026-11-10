@@ -398,3 +398,39 @@ def test_usb_transitions_are_logged_once_each_and_idle_ticks_are_silent(tmp_path
     r.tick(10)
     msgs = [m for _, m in _lines(caplog)]
     assert len(msgs) == 2 and "appeared" in msgs[0] and "resolved" in msgs[1]
+
+
+def test_fresh_read_and_resolve_shut_sane_down_afterwards(monkeypatch):
+    import sys
+    import types
+
+    from scanix500.server import buttons
+
+    calls = []
+    fake = types.SimpleNamespace(exit=lambda: calls.append("exit"))
+    monkeypatch.setitem(sys.modules, "sane", fake)
+    monkeypatch.setattr(buttons, "pixma_button_overrides", lambda device: {"color_mode": "color"})
+    monkeypatch.setattr(buttons, "resolve_device_name", lambda scanner_id: "pixma:x")
+    assert buttons._read_fresh("pixma:x") == {"color_mode": "color"}
+    assert buttons._resolve_fresh("canoscan") == "pixma:x"
+    assert calls == ["exit", "exit"]
+
+    def boom(device):
+        raise RuntimeError("x")
+
+    monkeypatch.setattr(buttons, "pixma_button_overrides", boom)
+    calls.clear()
+    try:
+        buttons._read_fresh("pixma:x")
+    except RuntimeError:
+        pass
+    assert calls == ["exit"]  # also when the read raised
+
+
+def test_sane_exit_without_sane_installed_is_harmless(monkeypatch):
+    import sys
+
+    from scanix500.server import buttons
+
+    monkeypatch.setitem(sys.modules, "sane", None)  # import raises ImportError
+    buttons._sane_exit()
