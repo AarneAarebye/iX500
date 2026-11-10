@@ -77,3 +77,18 @@ def test_server_package_never_imports_the_mac_app_libraries():
             "print(any(m in sys.modules for m in ('rumps', 'AppKit', 'Foundation', 'objc')))")
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True).stdout
     assert out.strip() == "False"
+
+
+def test_button_watcher_reads_only_inside_the_trigger_lock():
+    bp = ButtonPairing(lambda c: "tok")
+    bp.request("Mac")
+    trigger = ServerScanTrigger()
+    held = []
+    watcher = ButtonWatcher(bp, trigger, resolve=lambda: held.append(trigger.busy) or "dev",
+                            pressed=lambda d: held.append(trigger.busy) or False)
+    watcher.poll_once()
+    assert held == [True, True]
+    held.clear()
+    with trigger.exclusive():  # lock taken elsewhere: skip the tick
+        watcher.poll_once()
+    assert held == []

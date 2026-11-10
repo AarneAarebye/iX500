@@ -151,3 +151,42 @@ def test_status_and_button_scans_without_permission(state, capsys, monkeypatch):
     assert "Button scans: (run with sudo" in capsys.readouterr().out
     assert main(["button-scans", "list"]) == 1
     assert "run with sudo" in capsys.readouterr().err
+
+
+def test_unreadable_scan_json_gives_the_sudo_hint_not_zero(state, capsys, monkeypatch):
+    import os
+    if os.geteuid() == 0:
+        pytest.skip("root can read a chmod 000 file")
+    monkeypatch.setattr("scanix500.server.cli.resolve_device_name", lambda: None)
+    from scanix500.server.button_scans import ButtonScanStore
+    ButtonScanStore(state / "button-scans").add(_pdf(state / "c.pdf"), "scan_x.pdf", 1, skip_ocr=True, languages=[])
+    jsons = list((state / "button-scans").glob("*.json"))
+    for j in jsons:
+        j.chmod(0)
+    try:
+        assert main(["status"]) == 0
+        out = capsys.readouterr().out
+        assert "run with sudo" in out and "Waiting for pickup: 0" not in out
+        assert main(["button-scans", "list"]) == 1
+        cap = capsys.readouterr()
+        assert "run with sudo" in cap.err and "0" not in cap.out
+    finally:
+        for j in jsons:
+            j.chmod(0o600)
+
+
+def test_collection_cleared_between_scans_does_not_crash_status(state, capsys, monkeypatch):
+    import os
+    from scanix500.server import cli
+    monkeypatch.setattr("scanix500.server.cli.resolve_device_name", lambda: None)
+    (state / "collection").mkdir(parents=True)
+    (state / "collection" / "page-001.pdf").write_bytes(b"x")
+    real = os.scandir
+    calls = []
+    def flaky(path):
+        calls.append(1)
+        if len(calls) >= 2 and str(path).endswith("collection"):
+            return iter([])
+        return real(path)
+    monkeypatch.setattr(os, "scandir", flaky)
+    assert cli._collection_state(cli.load_config()) == (1, None)

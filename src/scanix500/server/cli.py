@@ -173,7 +173,8 @@ def _collection_state(cfg: ServerConfig) -> tuple[int, float | None]:
         pass
     if last is None and pages:
         try:
-            last = max(e.stat().st_mtime for e in os.scandir(cfg.collection_path) if _PAGE_FILE.match(e.name))
+            last = max((e.stat().st_mtime for e in os.scandir(cfg.collection_path) if _PAGE_FILE.match(e.name)),
+                       default=None)
         except OSError:
             pass
     return pages, last
@@ -195,6 +196,8 @@ def _waiting_scans(cfg: ServerConfig) -> list[dict]:
             with open(cfg.button_scans_path / name) as f:
                 meta = json.load(f)
             rows.append({"name": str(meta["name"]), "pages": int(meta["pages"]), "created": str(meta["created"])})
+        except PermissionError:
+            raise
         except (OSError, ValueError, KeyError, TypeError):
             continue
     return sorted(rows, key=lambda r: r["created"])

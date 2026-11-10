@@ -75,11 +75,16 @@ class ButtonWatcher:
     def poll_once(self) -> None:
         if not self._pairing.has_pending() or self._trigger.busy:
             return
-        if self._device is None:
-            self._device = self._resolve()
-            if self._device is None:
-                return
-        if self._pressed(self._device):
+        try:
+            with self._trigger.exclusive():  # never open SANE beside a scan or the 8800F's poller
+                if self._device is None:
+                    self._device = self._resolve()
+                    if self._device is None:
+                        return
+                pressed = self._pressed(self._device)
+        except ScanBusyError:
+            return
+        if pressed:
             self._pairing.press()
 
     def start(self) -> None:
