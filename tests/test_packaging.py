@@ -147,10 +147,8 @@ def test_beep_autodetects_headphones(tmp_path):
     assert calls == [f"-q -D plughw:CARD=Headphones {SOUNDS}/press.wav"]
 
 
-def test_beep_env_device_wins(tmp_path, monkeypatch):
+def test_beep_env_device_wins(tmp_path):
     body = '[ "$1" = -l ] && { echo Headphones; exit 0; }; printf "%s\\n" "$*" >> "$LOG"'
-    monkeypatch.setenv("SCANIX500_BEEP_DEVICE", "plughw:3,0")
-    # _run_beep builds its own env, so run directly
     bindir = tmp_path / "bin"; bindir.mkdir()
     fake = bindir / "aplay"; fake.write_text(f"#!/bin/sh\n{body}\n"); fake.chmod(0o755)
     log = tmp_path / "l"
