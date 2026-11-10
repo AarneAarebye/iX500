@@ -196,7 +196,7 @@ pressed (one beep for `color`, `bw` and `custom`, a double beep for `finish`).
 
 What you need: the Pi 4's 3.5 mm jack with a powered (active) speaker or
 headphones, or a USB speaker or USB sound card. HDMI audio works too, with
-`-D plughw:0,0`.
+`-D plughw:CARD=vc4hdmi0`.
 
 Wiring:
 
@@ -215,7 +215,7 @@ Steps:
 2. `aplay -l` lists the sound cards (`Headphones` is the jack, `vc4hdmi0` and
    `vc4hdmi1` are HDMI). The beep uses `Headphones` when it exists, otherwise
    ALSA's default; for another card use `-D`, for example
-   `button_feedback_command = /usr/bin/scanix500-beep -D plughw:1,0`.
+   `button_feedback_command = /usr/bin/scanix500-beep -D plughw:CARD=<name from aplay -l>`.
 3. Test: `sudo -u scanix500 scanix500-beep color`
 4. Enable it in `/etc/scanix500/server.conf`, section `[server]`:
    `button_feedback_command = /usr/bin/scanix500-beep`
