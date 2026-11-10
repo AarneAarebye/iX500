@@ -358,3 +358,45 @@ def test_a_finish_press_starts_no_scan_for_now():
     app._on_buttons_read(("sane:canoscan-8800f", FINISH))
     app._start_scan.assert_not_called()
     assert app._button_reading is False
+
+
+def _icon_app():
+    from scanix500.menubar.app import ScanixMenuBarApp
+
+    app = ScanixMenuBarApp.__new__(ScanixMenuBarApp)  # skip rumps.App.__init__/AppKit setup
+    app._icon = app._icon_nsimage = app._title = None
+    app._template = True
+    app._scanning = False
+    return app
+
+
+def test_icon_path_returns_none_for_a_missing_file():
+    from scanix500.menubar import app as app_module
+
+    assert app_module.icon_path("idle").endswith("idle.png")
+    assert app_module.icon_path("no-such-icon") is None
+
+
+def test_scan_start_and_completion_switch_the_icon_with_an_empty_title():
+    from scanix500.menubar import app as app_module
+
+    app = _icon_app()
+    with patch.object(app_module.threading, "Thread"):
+        assert app._start_scan(Profile(name="x", destination="/tmp")) is True
+    assert app.icon.endswith("scanning.png") and app.title == ""
+    with patch.object(app_module.rumps, "notification"):
+        app._on_scan_complete(ScanResult(ok=True, partial=False, message="ok", output_paths=[]))
+    assert app.icon.endswith("idle.png") and app.title == ""
+
+
+def test_a_missing_icon_file_falls_back_to_the_emoji_titles():
+    from scanix500.menubar import app as app_module
+
+    app = _icon_app()
+    with patch.object(app_module, "icon_path", return_value=None), \
+            patch.object(app_module.threading, "Thread"):
+        app._start_scan(Profile(name="x", destination="/tmp"))
+        assert app.icon is None and app.title == app_module.SCANNING_TITLE
+        with patch.object(app_module.rumps, "notification"):
+            app._on_scan_complete(ScanResult(ok=True, partial=False, message="ok", output_paths=[]))
+    assert app.icon is None and app.title == app_module.IDLE_TITLE

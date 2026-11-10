@@ -38,6 +38,16 @@ from scanix500.scanners import get_scanner, usb_ids
 IDLE_TITLE = "📄"
 SCANNING_TITLE = "📄…"
 
+# Template icons (black on transparent; macOS tints them for light/dark),
+# drawn by scripts/make_menubar_icons.py. The emoji titles above are the
+# fallback when a file is missing or cannot be loaded.
+ICON_DIR = Path(__file__).parent / "icons"
+
+
+def icon_path(name: str) -> str | None:
+    path = ICON_DIR / f"{name}.png"
+    return str(path) if path.is_file() else None
+
 # The Scan buttons are polled every 1.5 s, but nothing slow runs on the main
 # thread: _poll_button only starts one background read (_button_read_thread)
 # and returns, and a press comes back via AppHelper.callAfter. The reads are
@@ -53,7 +63,13 @@ RESOLVE_RETRY_TICKS = 20
 
 class ScanixMenuBarApp(rumps.App):
     def __init__(self):
-        super().__init__("scanix500", title=IDLE_TITLE, quit_button=t("Quit"))
+        # template=True must be given here: rumps applies it to every later
+        # `self.icon = ...` assignment, too. With an icon the title is None
+        # (rumps falls back on the app name only if there is neither a title
+        # nor an image).
+        idle_icon = icon_path("idle")
+        super().__init__("scanix500", title=None if idle_icon else IDLE_TITLE, icon=idle_icon,
+                         template=True, quit_button=t("Quit"))
         self.profiles_path = default_profiles_path()
         self.profiles = load_profiles(self.profiles_path)
         self.bridge_destination_path = default_bridge_destination_path()
@@ -102,6 +118,22 @@ class ScanixMenuBarApp(rumps.App):
             self._bridge_server = None
             rumps.notification(title=t("Scan bridge unavailable"), subtitle="", message=str(e))
         self._bridge_status_item.title = self._bridge_status_title()
+
+    def _show(self, state: str) -> None:
+        """Shows the "idle" or "scanning" state: the template icon with an
+        empty title, or the emoji title when the icon file is missing or
+        cannot be loaded. Main thread only (it touches the status item)."""
+        emoji = SCANNING_TITLE if state == "scanning" else IDLE_TITLE
+        path = icon_path(state)
+        if path is not None:
+            try:
+                self.icon = path
+                self.title = ""
+                return
+            except Exception:
+                pass
+        self.icon = None
+        self.title = emoji
 
     def _bridge_status_title(self) -> str:
         server = getattr(self, "_bridge_server", None)
@@ -169,7 +201,7 @@ class ScanixMenuBarApp(rumps.App):
         if self._scanning:
             return False
         self._scanning = True
-        self.title = SCANNING_TITLE
+        self._show("scanning")
         threading.Thread(target=self._run_scan_thread, args=(profile, on_done), daemon=True).start()
         return True
 
@@ -318,7 +350,7 @@ class ScanixMenuBarApp(rumps.App):
 
     def _on_scan_complete(self, result: ScanResult):
         self._scanning = False
-        self.title = IDLE_TITLE
+        self._show("idle")
         rumps.notification(title=notification_title(result), subtitle="", message=display_message(result.message))
 
     def _pair_browser(self, _sender):
