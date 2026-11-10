@@ -91,6 +91,16 @@ newer, faster Pi shortens the background step.
 - Settings (port, the name computers see): `/etc/scanix500/server.conf`,
   then `sudo dpkg-reconfigure scanix500-server`.
 
+## Which scanners the server looks for
+
+Only the ScanSnap iX500 and the CanoScan 8800F. The service and the commands
+`scanix500` and `scanix500-server` set `SANE_CONFIG_DIR=/etc/scanix500/sane.d:`,
+and `/etc/scanix500/sane.d/dll.conf` lists just the SANE backends `fujitsu`,
+`epjitsu` and `pixma`. Network scanners are deliberately not searched: SANE's
+network discovery (`net`, `airscan`, `bjnp`) added about 8 s to every scan. To
+use another type of scanner, add its SANE backend name to that file (it is
+kept across upgrades).
+
 ## CanoScan 8800F buttons (0.10.0)
 
 With the CanoScan 8800F plugged in, its COLOR, BLACK & WHITE and CUSTOM buttons

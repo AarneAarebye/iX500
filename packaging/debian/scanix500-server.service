@@ -4,6 +4,10 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+# Only the iX500, epjitsu and pixma backends, so SANE skips its ~8 s network
+# discovery. The TRAILING COLON matters: SANE then also searches /etc/sane.d
+# for every other config file (fujitsu.conf, pixma.conf).
+Environment=SANE_CONFIG_DIR=/etc/scanix500/sane.d:
 ExecStart=/usr/bin/scanix500-server run
 User=scanix500
 SupplementaryGroups=scanner

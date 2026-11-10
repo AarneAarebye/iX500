@@ -1,1 +1,2 @@
 /etc/scanix500/server.conf
+/etc/scanix500/sane.d/dll.conf

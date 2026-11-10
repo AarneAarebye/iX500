@@ -117,7 +117,7 @@ The CanoScan 8800F works as a second scanner next to the iX500: one A4 page
 per scan from the glass, 150/300/600/1200 dpi, color/gray/black & white, with OCR (PDF).
 It uses SANE's `pixma` backend, which `sane-backends` includes. Scanners are
 listed in Dossiary only while they are plugged in (the USB bus is checked, SANE
-is not opened), so an unplugged scanner disappears from the picker.
+is not opened), so an unplugged scanner disappears from the picker. On the Pi, SANE is limited to the `fujitsu`, `epjitsu` and `pixma` backends (`/etc/scanix500/sane.d/dll.conf`), because network discovery added about 8 s to every scan.
 
 - **On the Mac**, its three PDF scan buttons start a scan with the "Hardware
   Button" profile, like the iX500's button: COLOR scans in color, BLACK & WHITE

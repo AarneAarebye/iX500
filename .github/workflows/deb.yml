@@ -40,6 +40,8 @@ jobs:
         run: |
           test -x /usr/bin/scanix500-server && test -x /usr/bin/scanix500
           getent passwd scanix500
+          test -f /etc/scanix500/sane.d/dll.conf
+          grep -q SANE_CONFIG_DIR /lib/systemd/system/scanix500-server.service
           test -f /var/lib/scanix500/tls/cert.pem
           test "$(stat -c %U /var/lib/scanix500/tls/key.pem)" = scanix500
           grep -q "_dossiary-scan._tcp" /etc/avahi/services/scanix500.service
