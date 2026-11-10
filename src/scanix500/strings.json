@@ -511,14 +511,6 @@
     "zh-Hant": "捨棄已收集的 {count} 頁？[y/N] ",
     "hy": "Ջնջե՞լ հավաքված {count} էջը։ [y/N] "
   },
-  "Discarded the open collection.": {
-    "de": "Die offene Sammlung wurde verworfen.",
-    "es": "Se descartó la colección abierta.",
-    "fr": "La collection ouverte a été jetée.",
-    "zh-Hans": "已丢弃未完成的收集。",
-    "zh-Hant": "已捨棄未完成的收集。",
-    "hy": "Բաց հավաքածուն ջնջվեց։"
-  },
   "Button scan refused: less than 200 MB free.": {
     "de": "Tasten-Scan abgelehnt: weniger als 200 MB frei.",
     "es": "Escaneo por botón rechazado: menos de 200 MB libres.",
@@ -526,5 +518,13 @@
     "zh-Hans": "按键扫描被拒绝：可用空间不足 200 MB。",
     "zh-Hant": "按鍵掃描被拒絕：可用空間不足 200 MB。",
     "hy": "Կոճակով սկանը մերժվեց՝ ազատ է 200 ՄԲ-ից պակաս։"
+  },
+  "Discarded {count} pages of the open collection.": {
+    "de": "{count} Seiten der offenen Sammlung wurden verworfen.",
+    "es": "Se descartaron {count} páginas de la colección abierta.",
+    "fr": "{count} pages de la collection ouverte ont été jetées.",
+    "zh-Hans": "已丢弃未完成收集中的 {count} 页。",
+    "zh-Hant": "已捨棄未完成收集中的 {count} 頁。",
+    "hy": "Բաց հավաքածուի {count} էջը ջնջվեց։"
   }
 }

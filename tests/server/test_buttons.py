@@ -292,3 +292,20 @@ def test_expired_at_restart_finishes_on_the_first_tick(tmp_path):
     again = r.make(ScanCollection(r.cfg.collection_path, clock=lambda: r.now[0]))
     again.poll_once()
     assert len(r.store.list()) == 1
+
+
+def test_waits_three_ticks_after_a_plug_before_touching_sane(tmp_path):
+    r = Rig(tmp_path, [None] * 10, usb=set())
+    r.tick(2)
+    r.usb = USB
+    r.tick(3)
+    assert r.read_calls == 0 and r.resolves == 0
+    r.tick()
+    assert r.read_calls == 1
+    r.usb = set()
+    r.tick()
+    r.usb = USB
+    r.tick(3)
+    assert r.read_calls == 1  # the replug restarts the wait
+    r.tick()
+    assert r.read_calls == 2

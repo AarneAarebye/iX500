@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 MIN_FREE_BYTES = 200 * 1024 * 1024
 RETRY_AFTER_SECONDS = 300  # after a failed merge or delivery
 RESOLVE_RETRY_TICKS = 20
+SETTLE_TICKS = 3  # after a (re)plug: the Pi can freeze if SANE touches a scanner just plugged in
 JOIN_SECONDS = 10
 _DEFAULT_LANGUAGES = ["deu", "eng"]
 
@@ -61,6 +62,7 @@ class ButtonCollector:
         self._lock = threading.Lock()  # ScanCollection is not thread-safe
         self._device: str | None = None
         self._resolve_wait = 0
+        self._settle_left = 0
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._tmp = cfg.state_dir / "button-tmp"
@@ -90,6 +92,10 @@ class ButtonCollector:
         open here while a client's scan wants it."""
         if self._usb_id not in self._usb():
             self._device = None
+            self._settle_left = SETTLE_TICKS
+            return None
+        if self._settle_left > 0:
+            self._settle_left -= 1
             return None
         try:
             with self._trigger.exclusive():

@@ -51,6 +51,9 @@ jobs:
           runuser -u scanix500 -- scanix500-server run --fake-scanners &
           sleep 3
           curl -sk https://127.0.0.1:8767/health | grep -q '"remote": true'
+          curl -sk https://127.0.0.1:8767/health | grep -q '"buttonScans": true'
+      - name: Button scans command runs as the service user
+        run: runuser -u scanix500 -- scanix500-server button-scans list
       - name: Purge
         run: |
           DEBIAN_FRONTEND=noninteractive apt-get purge -y -qq scanix500-server

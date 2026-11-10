@@ -138,7 +138,7 @@ is not opened), so an unplugged scanner disappears from the picker.
   helper's pickup. The server's own button (pairing computers) stays the iX500's.
   `server.conf` keys (`[server]`): `collect_timeout_minutes` (default 10, at
   least 1), `button_custom_mode` (`gray`, `color` or `bw`; default `gray`),
-  `button_custom_resolution` (150, 300, 600 or 1200; default 300).
+  `button_custom_resolution` (150, 300 or 600; default 300; 1200 is refused, an A4 page would be over the 100-megapixel limit).
   `scanix500-server status` shows "Button scans: collecting 3 pages (closes in
   7 min)" and "Waiting for pickup: 2"; `scanix500-server button-scans list`
   lists the waiting PDFs; `sudo scanix500-server button-scans discard-open`

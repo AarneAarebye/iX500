@@ -79,12 +79,17 @@ def cmd_run(cfg: ServerConfig, fake: bool) -> int:
     else:
         button_store = ButtonScanStore(cfg.button_scans_path)
         button_store.start()
-        collector = ButtonCollector(ScanCollection(cfg.collection_path), button_store, trigger, cfg)
+        try:
+            collector = ButtonCollector(ScanCollection(cfg.collection_path), button_store, trigger, cfg)
+        except Exception:  # noqa: BLE001 - the iX500 and Dossiary must keep working
+            logging.exception("The button collection could not be opened (%s); running without the 8800F's buttons",
+                              cfg.collection_path)
     httpd = start_remote_server(cfg, backend, pairing, remote, server_context(cfg.cert_path, cfg.key_path),
                                 button_scans=button_store)
     if not fake:
         ButtonWatcher(buttons, trigger).start()
-        collector.start()
+        if collector is not None:
+            collector.start()
     logging.info("scanix500-server %s listening on port %d as %s (%s)", __version__, cfg.port, cfg.name,
                  display_fingerprint(fingerprint))
     stopped = threading.Event()
@@ -239,8 +244,16 @@ def cmd_button_scans(cfg: ServerConfig, action: str, yes: bool) -> int:
             answer = input(t("Throw away {count} collected pages? [y/N] ", count=pages))
             if answer.strip().lower() not in ("y", "yes"):
                 return 1
-        ScanCollection(cfg.collection_path).discard()  # the service must be stopped
-        print(t("Discarded the open collection."))
+        # Plain file operations only: ScanCollection's recovery could create a
+        # root-owned damaged/ folder the service then can't use.
+        removed = 0
+        with os.scandir(cfg.collection_path) as entries:
+            names = [e.name for e in entries if _PAGE_FILE.match(e.name)]
+        for name in names:
+            (cfg.collection_path / name).unlink(missing_ok=True)
+            removed += 1
+        (cfg.collection_path / "meta.json").unlink(missing_ok=True)
+        print(t("Discarded {count} pages of the open collection.", count=removed))
         return 0
     except PermissionError:
         print(t("Button scans: (run with sudo to see them)"), file=sys.stderr)

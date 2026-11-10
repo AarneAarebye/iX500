@@ -9,6 +9,9 @@ import socket
 from dataclasses import dataclass
 from pathlib import Path
 
+from scanix500.scanners import MAX_PIXELS, pixel_count
+
+_RESOLUTIONS = (150, 300, 600, 1200)  # only those an A4 page allows within MAX_PIXELS are accepted
 DEFAULT_REMOTE_PORT = 8767
 DEFAULT_CONFIG = Path("/etc/scanix500/server.conf")
 DEFAULT_STATE_DIR = Path("/var/lib/scanix500")
@@ -70,9 +73,10 @@ def load_config(path: Path | None = None) -> ServerConfig:
     raw_res = section.get("button_custom_resolution", "300")
     try:
         resolution = int(raw_res)
-        if resolution not in (150, 300, 600, 1200):
+        if resolution not in _RESOLUTIONS or pixel_count("a4", resolution) > MAX_PIXELS:
             raise ValueError
     except ValueError:
-        raise ValueError(f"{path}: button_custom_resolution must be 150, 300, 600 or 1200, not “{raw_res}”.") from None
+        allowed = ", ".join(str(r) for r in _RESOLUTIONS if pixel_count("a4", r) <= MAX_PIXELS)
+        raise ValueError(f"{path}: button_custom_resolution must be one of {allowed}, not “{raw_res}”.") from None
     return ServerConfig(port=port, name=name, state_dir=Path(state), collect_timeout_minutes=timeout,
                         button_custom_mode=mode, button_custom_resolution=resolution)

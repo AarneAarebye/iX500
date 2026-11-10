@@ -69,3 +69,11 @@ def test_bad_collecting_values_name_the_key_and_file(tmp_path, key, value):
     with pytest.raises(ValueError, match=key) as err:
         load_config(conf)
     assert str(conf) in str(err.value)
+
+
+@pytest.mark.parametrize("value", ["1200", "2400"])
+def test_button_custom_resolution_over_the_pixel_limit_is_refused(tmp_path, value):
+    conf = tmp_path / "s.conf"
+    conf.write_text(f"[server]\nbutton_custom_resolution = {value}\n")
+    with pytest.raises(ValueError, match="button_custom_resolution must be one of 150, 300, 600"):
+        load_config(conf)

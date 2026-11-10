@@ -109,7 +109,7 @@ after a change):
 | --- | --- | --- |
 | `collect_timeout_minutes` | `10` | a whole number, 1 or more |
 | `button_custom_mode` | `gray` | `gray`, `color`, `bw` |
-| `button_custom_resolution` | `300` | `150`, `300`, `600`, `1200` |
+| `button_custom_resolution` | `300` | `150`, `300`, `600` (1200 dpi is over the 100-megapixel limit for an A4 page) |
 
 COLOR and BLACK & WHITE always scan at 300 dpi. `scanix500-server status` shows
 the open collection and how many PDFs wait; `scanix500-server button-scans list`

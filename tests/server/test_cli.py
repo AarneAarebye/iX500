@@ -190,3 +190,36 @@ def test_collection_cleared_between_scans_does_not_crash_status(state, capsys, m
         return real(path)
     monkeypatch.setattr(os, "scandir", flaky)
     assert cli._collection_state(cli.load_config()) == (1, None)
+
+
+def test_discard_open_uses_plain_file_operations(state, capsys, monkeypatch):
+    col = state / "collection"
+    (col / "damaged").mkdir(parents=True)
+    (col / "damaged" / "old.pdf").write_bytes(b"old")
+    (col / "other.txt").write_text("keep")
+    (col / "page-001.pdf").write_bytes(b"corrupt")
+    (col / "page-002.pdf").write_bytes(b"corrupt")
+    (col / "meta.json").write_text("{}")
+    def no(*a, **k):
+        raise AssertionError("ScanCollection must not be built")
+    monkeypatch.setattr("scanix500.server.cli.ScanCollection", no)
+    assert main(["button-scans", "discard-open", "--yes"]) == 0
+    assert "2 pages" in capsys.readouterr().out
+    assert sorted(p.name for p in col.iterdir()) == ["damaged", "other.txt"]
+    assert [p.name for p in (col / "damaged").iterdir()] == ["old.pdf"]
+
+
+def test_run_survives_a_collection_that_cannot_be_opened(state, monkeypatch):
+    import threading
+    started = []
+    main(["init"])
+    def boom(*a, **k):
+        raise PermissionError("no")
+    monkeypatch.setattr("scanix500.server.cli.ScanCollection", boom)
+    monkeypatch.setattr("scanix500.server.cli.OcrJobQueue.start", lambda self: None)
+    monkeypatch.setattr("scanix500.server.cli.ButtonScanStore.start", lambda self: None)
+    monkeypatch.setattr("scanix500.server.cli.ButtonWatcher.start", lambda self: started.append("w"))
+    monkeypatch.setattr("scanix500.server.cli.start_remote_server", lambda *a, **k: type("H", (), {"shutdown": lambda s: started.append("h")})())
+    monkeypatch.setattr(threading.Event, "wait", lambda self, *a: True)
+    assert main(["run"]) == 0
+    assert started == ["w", "h"]
