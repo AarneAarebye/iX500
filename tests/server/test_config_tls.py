@@ -77,3 +77,18 @@ def test_button_custom_resolution_over_the_pixel_limit_is_refused(tmp_path, valu
     conf.write_text(f"[server]\nbutton_custom_resolution = {value}\n")
     with pytest.raises(ValueError, match="button_custom_resolution must be one of 150, 300, 600"):
         load_config(conf)
+
+
+def test_button_feedback_command_default_and_value(tmp_path):
+    conf = tmp_path / "server.conf"
+    conf.write_text("[server]\nport = 9443\n")
+    assert load_config(conf).button_feedback_command == ""
+    conf.write_text('[server]\nbutton_feedback_command = /usr/bin/say -v "Anna K"\n')
+    assert load_config(conf).button_feedback_command == '/usr/bin/say -v "Anna K"'
+
+
+def test_button_feedback_command_with_unbalanced_quote_is_refused(tmp_path):
+    conf = tmp_path / "server.conf"
+    conf.write_text("[server]\nbutton_feedback_command = say \"x\n")
+    with pytest.raises(ValueError, match="button_feedback_command"):
+        load_config(conf)

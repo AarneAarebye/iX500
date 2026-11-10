@@ -21,6 +21,7 @@ from scanix500.menubar.bridge import ScanBusyError
 from scanix500.menubar.button_watcher import FINISH, pixma_button_overrides, resolve_device_name
 from scanix500.menubar.profiles import Profile
 from scanix500.scanners import CANOSCAN_8800F_ID, get_scanner, usb_ids
+from scanix500.server.button_events import ButtonEvents
 from scanix500.server.button_scans import ButtonScanStore
 from scanix500.server.config import ServerConfig
 from scanix500.server.runtime import ServerScanTrigger
@@ -50,15 +51,21 @@ def _page_count(path: Path) -> int:
         return 0
 
 
+def _button_name(overrides: dict) -> str:
+    return {"color": "color", "bw": "bw"}.get(overrides.get("color_mode"), "custom")
+
+
 class ButtonCollector:
     def __init__(self, collection: ScanCollection, store: ButtonScanStore, trigger: ServerScanTrigger,
                  cfg: ServerConfig, *, read: Callable[[str], dict | str | None] = pixma_button_overrides,
                  resolve: Callable[[str], str | None] = resolve_device_name,
                  usb: Callable[[], set] = usb_ids, free_bytes: Callable[[Path], int] = _free_bytes,
-                 clock: Callable[[], float] = time.time, interval: float = 1.5):
+                 clock: Callable[[], float] = time.time, interval: float = 1.5,
+                 events: ButtonEvents | None = None):
         self._collection, self._store, self._trigger, self._cfg = collection, store, trigger, cfg
         self._read, self._resolve, self._usb, self._free_bytes = read, resolve, usb, free_bytes
         self._clock, self._interval = clock, interval
+        self._events = events
         self._lock = threading.Lock()  # ScanCollection is not thread-safe
         self._device: str | None = None
         self._resolve_wait = 0
@@ -82,6 +89,8 @@ class ButtonCollector:
             if expired:
                 self.finish_now()
         hit = self._read_buttons()
+        if hit is not None and self._events is not None:
+            self._events.record("finish" if hit == FINISH else _button_name(hit))
         if hit == FINISH:
             self.finish_now(force=True)
         elif isinstance(hit, dict):

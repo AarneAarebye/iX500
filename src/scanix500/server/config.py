@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import configparser
 import os
+import shlex
 import socket
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,6 +26,7 @@ class ServerConfig:
     collect_timeout_minutes: int = 10
     button_custom_mode: str = "gray"
     button_custom_resolution: int = 300
+    button_feedback_command: str = ""
 
     @property
     def tls_dir(self) -> Path: return self.state_dir / "tls"
@@ -78,5 +80,11 @@ def load_config(path: Path | None = None) -> ServerConfig:
     except ValueError:
         allowed = ", ".join(str(r) for r in _RESOLUTIONS if pixel_count("a4", r) <= MAX_PIXELS)
         raise ValueError(f"{path}: button_custom_resolution must be one of {allowed}, not “{raw_res}”.") from None
+    raw_cmd = section.get("button_feedback_command", "").strip()
+    try:
+        shlex.split(raw_cmd)
+    except ValueError as exc:
+        raise ValueError(f"{path}: button_feedback_command is not a valid command line: {exc}") from None
     return ServerConfig(port=port, name=name, state_dir=Path(state), collect_timeout_minutes=timeout,
-                        button_custom_mode=mode, button_custom_resolution=resolution)
+                        button_custom_mode=mode, button_custom_resolution=resolution,
+                        button_feedback_command=raw_cmd)

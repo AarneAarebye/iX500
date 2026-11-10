@@ -10,6 +10,7 @@ from scanix500.collection import ScanCollection
 from scanix500.menubar.button_watcher import FINISH
 from scanix500.menubar.runner import ScanResult
 from scanix500.scanners import CANOSCAN_8800F_ID
+from scanix500.server.button_events import ButtonEvents
 from scanix500.server.button_scans import ButtonScanStore
 from scanix500.server.buttons import ButtonCollector
 from scanix500.server.config import ServerConfig
@@ -19,12 +20,13 @@ USB = {(0x04A9, 0x1901)}
 
 
 class Rig:
-    def __init__(self, tmp_path, reads, usb=USB, free=10**10, ok=True, trigger=None):
+    def __init__(self, tmp_path, reads, usb=USB, free=10**10, ok=True, trigger=None, events=None):
         self.tmp = tmp_path
         self.profiles = []
         self.now = [1_800_000_000.0]
         self.reads = list(reads)
         self.read_calls = 0
+        self.seq_in_scan = []
         self.ok = ok
         self.cfg = ServerConfig(port=1, name="x", state_dir=tmp_path / "state",
                                 button_custom_mode="gray", button_custom_resolution=600)
@@ -34,12 +36,14 @@ class Rig:
         self.store = ButtonScanStore(self.cfg.button_scans_path, ocr=lambda a, b, c: None)
         self.usb, self.free = usb, free
         self.resolves = 0
+        self.events = events
         self.collector = self.make()
 
     def make(self, collection=None):
         return ButtonCollector(collection or self.collection, self.store, self.trigger, self.cfg,
                                read=self._read, resolve=self._resolve, usb=lambda: self.usb,
-                               free_bytes=lambda p: self.free, clock=lambda: self.now[0])
+                               free_bytes=lambda p: self.free, clock=lambda: self.now[0],
+                               events=self.events)
 
     def _resolve(self, scanner):
         self.resolves += 1
@@ -54,6 +58,8 @@ class Rig:
 
     def _run(self, profile):
         self.profiles.append(profile)
+        if self.events is not None:
+            self.seq_in_scan.append(self.events.snapshot()["seq"])
         if not self.ok:
             return ScanResult(ok=False, partial=False, message="boom", output_paths=[])
         p = self.tmp / f"in{len(self.profiles)}.pdf"
@@ -309,3 +315,26 @@ def test_waits_three_ticks_after_a_plug_before_touching_sane(tmp_path):
     assert r.read_calls == 1  # the replug restarts the wait
     r.tick()
     assert r.read_calls == 2
+
+
+def test_presses_are_recorded_before_the_scan_runs(tmp_path):
+    ev = ButtonEvents()
+    r = Rig(tmp_path, [C], events=ev)
+    r.tick()
+    assert ev.snapshot() == {"seq": 1, "button": "color"}
+    assert r.seq_in_scan == [1]
+
+
+def test_each_button_has_its_name(tmp_path):
+    for read, name in [(CU, "custom"), (B, "bw"), (FINISH, "finish")]:
+        ev = ButtonEvents()
+        r = Rig(tmp_path / name, [read], events=ev) if (tmp_path / name).mkdir() is None else None
+        r.tick()
+        assert ev.snapshot() == {"seq": 1, "button": name}
+
+
+def test_no_press_records_nothing(tmp_path):
+    ev = ButtonEvents()
+    r = Rig(tmp_path, [None], events=ev)
+    r.tick()
+    assert ev.snapshot() == {"seq": 0}
