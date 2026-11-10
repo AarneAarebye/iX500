@@ -12,8 +12,10 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
+import re
 import signal
 import sys
 import threading
@@ -29,7 +31,7 @@ from scanix500.menubar.fakes import FakeBackend, FakePairing
 from scanix500.menubar.ocr_jobs import OcrJobQueue
 from scanix500.menubar.pairing import SERVER_CODE_LIFETIME_SECONDS, SharedWindowPairingStore
 from scanix500.server.button_pairing import ButtonPairing
-from scanix500.server.button_scans import ButtonScanStore
+from scanix500.server.button_scans import ID_RE, ButtonScanStore
 from scanix500.server.buttons import ButtonCollector
 from scanix500.server.config import ServerConfig, load_config
 from scanix500.server.runtime import ButtonWatcher, ServerScanTrigger, start_remote_server
@@ -152,25 +154,62 @@ def cmd_status(cfg: ServerConfig) -> int:
     return 0
 
 
-def _read_collection(cfg: ServerConfig) -> ScanCollection | None:
-    """The open collection, read-only (None when the folder doesn't exist)."""
-    if not cfg.collection_path.is_dir():
-        return None
-    return ScanCollection(cfg.collection_path)
+_PAGE_FILE = re.compile(r"\Apage-\d+\.pdf\Z")
+
+
+def _collection_state(cfg: ServerConfig) -> tuple[int, float | None]:
+    """Pages and last activity of the open collection, by plain reads (nothing
+    is created, moved or fixed). PermissionError is for the caller."""
+    try:
+        with os.scandir(cfg.collection_path) as entries:
+            pages = sum(1 for e in entries if _PAGE_FILE.match(e.name))
+    except FileNotFoundError:
+        return 0, None
+    last = None
+    try:
+        with open(cfg.collection_path / "meta.json") as f:
+            last = float(json.load(f)["last_activity"])
+    except (FileNotFoundError, ValueError, KeyError, TypeError):
+        pass
+    if last is None and pages:
+        try:
+            last = max(e.stat().st_mtime for e in os.scandir(cfg.collection_path) if _PAGE_FILE.match(e.name))
+        except OSError:
+            pass
+    return pages, last
+
+
+def _waiting_scans(cfg: ServerConfig) -> list[dict]:
+    """The waiting list by plain reads, oldest first."""
+    rows = []
+    try:
+        with os.scandir(cfg.button_scans_path) as entries:
+            names = [e.name for e in entries]
+    except FileNotFoundError:
+        return []
+    for name in names:
+        stem = name[:-5]
+        if not name.endswith(".json") or not ID_RE.match(stem) or f"{stem}.pdf" not in names:
+            continue
+        try:
+            with open(cfg.button_scans_path / name) as f:
+                meta = json.load(f)
+            rows.append({"name": str(meta["name"]), "pages": int(meta["pages"]), "created": str(meta["created"])})
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    return sorted(rows, key=lambda r: r["created"])
 
 
 def _button_status_lines(cfg: ServerConfig) -> list[str]:
     try:
-        collection = _read_collection(cfg)
-        if collection is not None and collection.page_count:
-            last = collection.last_activity or time.time()
-            left = max(0, int(last + cfg.collect_timeout_minutes * 60 - time.time()))
+        pages, last = _collection_state(cfg)
+        if pages:
+            left = max(0, int((last or time.time()) + cfg.collect_timeout_minutes * 60 - time.time()))
             lines = [t("Button scans: collecting {count} pages (closes in {minutes} min)",
-                       count=collection.page_count, minutes=(left + 59) // 60)]
+                       count=pages, minutes=(left + 59) // 60)]
         else:
             lines = [t("Button scans: nothing collected")]
-        waiting = len(ButtonScanStore(cfg.button_scans_path).list()) if cfg.button_scans_path.is_dir() else 0
-        lines.append(t("Waiting for pickup: {count}", count=waiting))
+        lines.append(t("Waiting for pickup: {count}", count=len(_waiting_scans(cfg))))
         return lines
     except PermissionError:
         return [t("Button scans: (run with sudo to see them)")]
@@ -179,24 +218,21 @@ def _button_status_lines(cfg: ServerConfig) -> list[str]:
 def cmd_button_scans(cfg: ServerConfig, action: str, yes: bool) -> int:
     try:
         if action == "list":
-            if not cfg.button_scans_path.is_dir():
-                print(t("No button scans are waiting."))
-                return 0
-            rows = ButtonScanStore(cfg.button_scans_path).list()
+            rows = _waiting_scans(cfg)
             if not rows:
                 print(t("No button scans are waiting."))
             for row in rows:
                 print(t("{name}  {pages} pages  {created}", name=row["name"], pages=row["pages"], created=row["created"]))
             return 0
-        collection = _read_collection(cfg)
-        if collection is None or not collection.page_count:
+        pages, _ = _collection_state(cfg)
+        if not pages:
             print(t("Button scans: nothing collected"))
             return 0
         if not yes:
-            answer = input(t("Throw away {count} collected pages? [y/N] ", count=collection.page_count))
+            answer = input(t("Throw away {count} collected pages? [y/N] ", count=pages))
             if answer.strip().lower() not in ("y", "yes"):
                 return 1
-        collection.discard()
+        ScanCollection(cfg.collection_path).discard()  # the service must be stopped
         print(t("Discarded the open collection."))
         return 0
     except PermissionError:

@@ -20,6 +20,8 @@ from scanix500.server.config import ServerConfig
 
 logger = logging.getLogger(__name__)
 
+BUSY_WAIT_SECONDS = 2.0
+
 
 class ServerScanTrigger:
     """ScanTrigger for the server: runs the scan in the request's own
@@ -44,7 +46,9 @@ class ServerScanTrigger:
             self._lock.release()
 
     def trigger(self, profile: Profile) -> ScanResult:
-        if not self._lock.acquire(blocking=False):
+        # A short wait: the button poller holds the lock for a moment while it
+        # reads the 8800F, and a client's request should not fail over that.
+        if not self._lock.acquire(timeout=BUSY_WAIT_SECONDS):
             raise ScanBusyError()
         try:
             try:

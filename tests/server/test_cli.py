@@ -120,3 +120,34 @@ def test_fake_run_does_not_start_the_collector(state, monkeypatch):
     monkeypatch.setattr(threading.Event, "wait", lambda self, *a: True)
     assert main(["run", "--fake-scanners"]) == 0
     assert started == []
+
+
+def _snapshot(folder):
+    return sorted((str(p), p.stat().st_mtime_ns, p.read_bytes() if p.is_file() else None) for p in folder.rglob("*"))
+
+
+def test_status_and_list_never_write(state, capsys, monkeypatch):
+    monkeypatch.setattr("scanix500.server.cli.resolve_device_name", lambda: None)
+    (state / "collection").mkdir(parents=True)
+    (state / "collection" / "page-001.pdf").write_bytes(b"nope")  # damaged: a ScanCollection would move it
+    (state / "button-scans").mkdir()
+    before = _snapshot(state)
+    assert main(["status"]) == 0
+    out = capsys.readouterr().out
+    assert "collecting 1 pages" in out
+    assert main(["button-scans", "list"]) == 0
+    assert _snapshot(state) == before
+
+
+def test_status_and_button_scans_without_permission(state, capsys, monkeypatch):
+    import os
+    monkeypatch.setattr("scanix500.server.cli.resolve_device_name", lambda: None)
+    def denied(*a, **k):
+        raise PermissionError(13, "Permission denied")
+    monkeypatch.setattr("scanix500.server.cli._fingerprint_line", denied)
+    monkeypatch.setattr("scanix500.server.cli._paired_count", denied)
+    monkeypatch.setattr(os, "scandir", denied)
+    assert main(["status"]) == 0
+    assert "Button scans: (run with sudo" in capsys.readouterr().out
+    assert main(["button-scans", "list"]) == 1
+    assert "run with sudo" in capsys.readouterr().err
