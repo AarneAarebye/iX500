@@ -19,6 +19,9 @@ class ServerConfig:
     port: int
     name: str
     state_dir: Path
+    collect_timeout_minutes: int = 10
+    button_custom_mode: str = "gray"
+    button_custom_resolution: int = 300
 
     @property
     def tls_dir(self) -> Path: return self.state_dir / "tls"
@@ -34,6 +37,10 @@ class ServerConfig:
     def ocr_jobs_path(self) -> Path: return self.state_dir / "ocr-jobs"
     @property
     def scans_path(self) -> Path: return self.state_dir / "scans"
+    @property
+    def collection_path(self) -> Path: return self.state_dir / "collection"
+    @property
+    def button_scans_path(self) -> Path: return self.state_dir / "button-scans"
 
 
 def load_config(path: Path | None = None) -> ServerConfig:
@@ -50,4 +57,22 @@ def load_config(path: Path | None = None) -> ServerConfig:
         raise ValueError(f"{path}: port must be a number from 1 to 65535, not “{raw_port}”.") from None
     name = (section.get("name") or "").strip() or socket.gethostname().split(".")[0]
     state = os.environ.get("SCANIX500_STATE_DIR") or section.get("state_dir") or str(DEFAULT_STATE_DIR)
-    return ServerConfig(port=port, name=name, state_dir=Path(state))
+    raw_timeout = section.get("collect_timeout_minutes", "10")
+    try:
+        timeout = int(raw_timeout)
+        if timeout < 1:
+            raise ValueError
+    except ValueError:
+        raise ValueError(f"{path}: collect_timeout_minutes must be a whole number from 1 up, not “{raw_timeout}”.") from None
+    mode = section.get("button_custom_mode", "gray").strip()
+    if mode not in ("gray", "color", "bw"):
+        raise ValueError(f"{path}: button_custom_mode must be gray, color or bw, not “{mode}”.")
+    raw_res = section.get("button_custom_resolution", "300")
+    try:
+        resolution = int(raw_res)
+        if resolution not in (150, 300, 600, 1200):
+            raise ValueError
+    except ValueError:
+        raise ValueError(f"{path}: button_custom_resolution must be 150, 300, 600 or 1200, not “{raw_res}”.") from None
+    return ServerConfig(port=port, name=name, state_dir=Path(state), collect_timeout_minutes=timeout,
+                        button_custom_mode=mode, button_custom_resolution=resolution)

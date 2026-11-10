@@ -41,3 +41,31 @@ def test_certificate_is_made_once_and_loads(tmp_path):
     shown = display_fingerprint(digest)
     assert shown.count("-") == 7 and shown.replace("-", "") == digest[:32]
     assert isinstance(server_context(tls / "cert.pem", tls / "key.pem"), ssl.SSLContext)
+
+
+def test_collecting_defaults_and_folders(tmp_path, monkeypatch):
+    monkeypatch.setenv("SCANIX500_STATE_DIR", str(tmp_path / "state"))
+    cfg = load_config(tmp_path / "missing.conf")
+    assert (cfg.collect_timeout_minutes, cfg.button_custom_mode, cfg.button_custom_resolution) == (10, "gray", 300)
+    assert cfg.collection_path == tmp_path / "state" / "collection"
+    assert cfg.button_scans_path == tmp_path / "state" / "button-scans"
+
+
+def test_collecting_values_are_read(tmp_path):
+    conf = tmp_path / "server.conf"
+    conf.write_text("[server]\ncollect_timeout_minutes = 3\nbutton_custom_mode = bw\nbutton_custom_resolution = 600\n")
+    cfg = load_config(conf)
+    assert (cfg.collect_timeout_minutes, cfg.button_custom_mode, cfg.button_custom_resolution) == (3, "bw", 600)
+
+
+@pytest.mark.parametrize("key, value", [
+    ("collect_timeout_minutes", "0"), ("collect_timeout_minutes", "ten"),
+    ("button_custom_mode", "sepia"), ("button_custom_resolution", "200"),
+    ("button_custom_resolution", "fast"),
+])
+def test_bad_collecting_values_name_the_key_and_file(tmp_path, key, value):
+    conf = tmp_path / "server.conf"
+    conf.write_text(f"[server]\n{key} = {value}\n")
+    with pytest.raises(ValueError, match=key) as err:
+        load_config(conf)
+    assert str(conf) in str(err.value)

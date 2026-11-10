@@ -19,7 +19,7 @@ from scanix500.menubar.bridge_settings import (
     save_bridge_destination,
 )
 from scanix500.menubar.pairing import PairingStore, default_pairing_path
-from scanix500.menubar.button_watcher import BUTTON_READERS, resolve_device_name
+from scanix500.menubar.button_watcher import BUTTON_READERS, FINISH, resolve_device_name
 from scanix500.menubar.profile_form import pick_folder, show_profile_form
 from scanix500.menubar.profiles import (
     HARDWARE_BUTTON_PROFILE_NAME,
@@ -220,6 +220,8 @@ class ScanixMenuBarApp(rumps.App):
         if hit is None:
             return
         scanner_id, overrides = hit
+        if overrides == FINISH:  # the Mac app gives FINISH a meaning in a later plan
+            return
         profile = find_profile(self.profiles, HARDWARE_BUTTON_PROFILE_NAME)
         if profile is not None:
             self._start_scan(replace(profile, scanner=scanner_id, **overrides))

@@ -4,7 +4,7 @@ import pytest
 
 from scanix500.menubar import button_watcher
 from scanix500.menubar.button_watcher import (
-    BUTTON_READERS, PIXMA_BUTTONS, _pixma_overrides, ix500_button_overrides, resolve_device_name,
+    BUTTON_READERS, FINISH, PIXMA_BUTTONS, _pixma_overrides, ix500_button_overrides, resolve_device_name,
 )
 from scanix500.scanners import CANOSCAN_8800F_ID, IX500_ID
 
@@ -46,7 +46,7 @@ def test_resolve_returns_none_for_an_unknown_scanner_or_without_sane(monkeypatch
     (4, {"color_mode": "color"}),  # COLOR
     (5, {"color_mode": "bw"}),  # BLACK & WHITE
     (6, {}),  # CUSTOM: the profile as it is
-    (7, None),  # FINISH
+    (7, FINISH),  # FINISH: the collection ends
     (8, None),
 ])
 def test_pixma_buttons(target, expected):

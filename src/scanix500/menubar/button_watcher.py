@@ -60,21 +60,26 @@ def button_pressed(device_name: str) -> bool:
 
 # The 8800F's buttons (measured on the real scanner, see the spec's section 5):
 # SANE's `target` option reads the pressed button's number for about one poll,
-# 0 otherwise. 1 COPY, 2 PHOTO/FILM, 3 E-MAIL and 7 FINISH do nothing; the three
+# 0 otherwise. 1 COPY, 2 PHOTO/FILM and 3 E-MAIL do nothing; the three
 # PDF scan buttons start a scan, COLOR and BLACK & WHITE choosing the mode and
-# CUSTOM keeping the profile as it is.
+# CUSTOM keeping the profile as it is. 7 FINISH is reported as FINISH.
 PIXMA_BUTTONS: dict[int, dict] = {4: {"color_mode": "color"}, 5: {"color_mode": "bw"}, 6: {}}
+FINISH = "finish"
+_FINISH_TARGET = 7
 
 
-def _pixma_overrides(values: dict[str, int]) -> dict | None:
-    """The Profile overrides the pressed button asks for ({} = none), or None
-    when no scan button is pressed. Only `target` counts: `button-1` blips to 1
-    about every 12 s while the scanner is idle."""
-    found = PIXMA_BUTTONS.get(values.get("target", 0))
+def _pixma_overrides(values: dict[str, int]) -> dict | str | None:
+    """The Profile overrides the pressed button asks for ({} = none), FINISH
+    for the FINISH button, or None when no scan button is pressed. Only
+    `target` counts: `button-1` blips to 1 about every 12 s while idle."""
+    target = values.get("target", 0)
+    if target == _FINISH_TARGET:
+        return FINISH
+    found = PIXMA_BUTTONS.get(target)
     return None if found is None else dict(found)
 
 
-def pixma_button_overrides(device_name: str) -> dict | None:
+def pixma_button_overrides(device_name: str) -> dict | str | None:
     """Opens the 8800F, reads its `target` option and closes it again.
     Returns None on any failure rather than raising, like button_pressed().
     button-update is never called: python-sane can't set a button option, and
@@ -99,7 +104,7 @@ def ix500_button_overrides(device_name: str) -> dict | None:
 
 
 # Which function reads each scanner's buttons. The Mac app polls all of them.
-BUTTON_READERS: dict[str, Callable[[str], dict | None]] = {
+BUTTON_READERS: dict[str, Callable[[str], dict | str | None]] = {
     IX500_ID: ix500_button_overrides,
     CANOSCAN_8800F_ID: pixma_button_overrides,
 }

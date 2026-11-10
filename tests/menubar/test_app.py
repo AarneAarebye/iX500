@@ -343,3 +343,18 @@ def test_bridge_status_title_shows_the_listening_address_or_that_it_is_down():
 
     app._bridge_server = None
     assert app._bridge_status_title() == "Not listening (scan bridge unavailable)"
+
+
+def test_a_finish_press_starts_no_scan_for_now():
+    from unittest.mock import MagicMock
+
+    from scanix500.menubar.app import ScanixMenuBarApp
+    from scanix500.menubar.button_watcher import FINISH
+
+    app = ScanixMenuBarApp.__new__(ScanixMenuBarApp)
+    app._button_reading = True
+    app.profiles = []
+    app._start_scan = MagicMock()
+    app._on_buttons_read(("sane:canoscan-8800f", FINISH))
+    app._start_scan.assert_not_called()
+    assert app._button_reading is False
