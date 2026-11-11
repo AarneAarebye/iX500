@@ -20,6 +20,7 @@ from scanix500.menubar.bridge_settings import (
     save_bridge_destination,
 )
 from scanix500.menubar.pairing import PairingStore, default_pairing_path
+from scanix500 import __version__
 from scanix500.menubar.button_watcher import BUTTON_READERS, FINISH, resolve_device_name, sane_exit
 from scanix500.menubar.collecting import (
     FinishOutcome,
@@ -190,7 +191,7 @@ class ScanixMenuBarApp(rumps.App):
         # Greyed-out header (no callback): the app's name and where its bridge
         # listens, like Dossiary Scan Helper's menu. The bridge starts after
         # the first rebuild, so __init__ refreshes the second item's title.
-        self.menu.add(rumps.MenuItem("scanix500"))
+        self.menu.add(rumps.MenuItem(f"scanix500 {__version__}"))
         self._bridge_status_item = rumps.MenuItem(self._bridge_status_title())
         self.menu.add(self._bridge_status_item)
         collector = getattr(self, "_collector", None)

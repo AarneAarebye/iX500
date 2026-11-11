@@ -839,3 +839,21 @@ def test_the_emoji_fallback_for_scanning_also_carries_the_count():
     with patch("scanix500.menubar.app.icon_path", return_value=None):
         app._show("scanning")
     assert app.icon is None and app.title == "📄… 3"
+
+
+def test_the_menu_header_shows_the_version():
+    from scanix500 import __version__
+    from scanix500.menubar.app import ScanixMenuBarApp
+
+    with (
+        patch("scanix500.menubar.app.load_profiles", return_value=[Profile(name="Default", destination="/tmp/scans")]),
+        patch("scanix500.menubar.app.default_profiles_path", return_value="/tmp/scanix500-test-profiles.json"),
+        patch("scanix500.menubar.app.load_bridge_destination", return_value="/tmp/scans"),
+        patch("scanix500.menubar.app.default_bridge_destination_path", return_value="/tmp/scanix500-test-bridge-destination.txt"),
+        patch("scanix500.menubar.app.default_pairing_path", return_value=Path("/tmp/scanix500-test-paired-browsers.json")),
+        patch("scanix500.menubar.app.start_bridge_server", side_effect=OSError("Address already in use")),
+        patch("scanix500.menubar.app.default_collection_folder", return_value=Path("/tmp/scanix500-test-collection")),
+        patch("scanix500.menubar.app.rumps.notification"),
+    ):
+        app = ScanixMenuBarApp()
+    assert f"scanix500 {__version__}" in [item.title for item in app.menu.values() if hasattr(item, "title")]
