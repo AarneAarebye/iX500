@@ -73,7 +73,8 @@ def test_usb_ids_runs_ioreg_on_macos(monkeypatch):
     monkeypatch.setattr(scanners.sys, "platform", "darwin")
     monkeypatch.setattr(scanners.subprocess, "run", lambda cmd, **k: seen.update(cmd=cmd) or Done())
     assert (0x04A9, 0x1901) in usb_ids()
-    assert seen["cmd"][:3] == ["ioreg", "-p", "IOUSB"]
+    # A LaunchAgent's PATH has no /usr/sbin, where ioreg lives: call it by its full path.
+    assert seen["cmd"][:3] == ["/usr/sbin/ioreg", "-p", "IOUSB"]
 
 
 def test_usb_ids_reads_sysfs_elsewhere(monkeypatch, tmp_path):

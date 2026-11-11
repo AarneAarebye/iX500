@@ -140,7 +140,7 @@ def usb_ids() -> set[tuple[int, int]]:
     """(vendor, product) of every USB device present. Never raises."""
     try:
         if sys.platform == "darwin":
-            out = subprocess.run(["ioreg", "-p", "IOUSB", "-l", "-w0"], capture_output=True, text=True,
+            out = subprocess.run(["/usr/sbin/ioreg", "-p", "IOUSB", "-l", "-w0"], capture_output=True, text=True,
                                  timeout=5, check=True).stdout
             return usb_ids_from_ioreg(out)
         return usb_ids_from_sysfs(SYSFS_USB)
