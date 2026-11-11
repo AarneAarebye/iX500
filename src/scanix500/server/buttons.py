@@ -18,7 +18,7 @@ from pypdf import PdfReader
 from scanix500.collection import CollectionSettings, ScanCollection
 from scanix500.i18n import t
 from scanix500.menubar.bridge import ScanBusyError
-from scanix500.menubar.button_watcher import FINISH, pixma_button_overrides, resolve_device_name
+from scanix500.menubar.button_watcher import FINISH, pixma_button_overrides, resolve_device_name, sane_exit
 from scanix500.menubar.profiles import Profile
 from scanix500.scanners import CANOSCAN_8800F_ID, get_scanner, usb_ids
 from scanix500.server.button_events import ButtonEvents
@@ -37,31 +37,18 @@ JOIN_SECONDS = 10
 _DEFAULT_LANGUAGES = ["deu", "eng"]
 
 
-def _sane_exit() -> None:
-    """Shuts SANE down so the next use starts from scratch. A long-running
-    process that keeps SANE initialised across a power-cycle of the scanner
-    keeps reading it through a stale USB handle ("Invalid argument") until the
-    service is restarted."""
-    try:
-        import sane
-
-        sane.exit()
-    except Exception:  # noqa: BLE001 - nothing to clean up if SANE never started
-        pass
-
-
 def _read_fresh(device: str) -> dict | str | None:
     try:
         return pixma_button_overrides(device)
     finally:
-        _sane_exit()
+        sane_exit()
 
 
 def _resolve_fresh(scanner_id: str) -> str | None:
     try:
         return resolve_device_name(scanner_id)
     finally:
-        _sane_exit()
+        sane_exit()
 
 
 def _free_bytes(path: Path) -> int:

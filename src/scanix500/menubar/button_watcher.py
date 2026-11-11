@@ -106,6 +106,19 @@ def _note_pixma_failure(device_name: str, exc: Exception) -> None:
                        type(exc).__name__, exc)
 
 
+def sane_exit() -> None:
+    """Shuts SANE down so the next use starts from scratch. A long-running
+    process that keeps SANE initialised across a power-cycle of the scanner
+    keeps reading it through a stale USB handle ("Invalid argument") until the
+    service is restarted."""
+    try:
+        import sane
+
+        sane.exit()
+    except Exception:  # noqa: BLE001 - nothing to clean up if SANE never started
+        pass
+
+
 def pixma_button_overrides(device_name: str) -> dict | str | None:
     """Opens the 8800F, reads its `target` option and closes it again.
     Returns None on any failure rather than raising, like button_pressed().

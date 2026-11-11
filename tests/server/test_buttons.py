@@ -433,4 +433,4 @@ def test_sane_exit_without_sane_installed_is_harmless(monkeypatch):
     from scanix500.server import buttons
 
     monkeypatch.setitem(sys.modules, "sane", None)  # import raises ImportError
-    buttons._sane_exit()
+    buttons.sane_exit()

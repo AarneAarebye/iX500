@@ -798,3 +798,44 @@ def test_a_failed_finish_translates_known_messages(sync):
     app._collector.finish_outcome = FinishOutcome(None, 2, False, "No pages scanned.")
     app._start_finish()
     assert sync == [("Scan failed", "No pages scanned.")]
+
+
+def test_every_button_read_cycle_shuts_sane_down_even_when_it_fails():
+    # A SANE that stays initialised never learns about a scanner plugged in
+    # (or power-cycled) later, so each poll cycle ends with sane.exit().
+    from scanix500.menubar.app import ScanixMenuBarApp
+
+    app = ScanixMenuBarApp.__new__(ScanixMenuBarApp)
+    calls = []
+    app._read_buttons = lambda retry, present: None
+    with (
+        patch("scanix500.menubar.app.usb_ids", return_value=set()),
+        patch("scanix500.menubar.app.sane_exit", side_effect=lambda: calls.append("exit")),
+        patch("scanix500.menubar.app.AppHelper.callAfter", side_effect=lambda f, *a: calls.append("after")),
+    ):
+        app._button_read_thread(True)
+        assert calls == ["exit", "after"]
+        calls.clear()
+
+        def boom(retry, present):
+            raise RuntimeError("x")
+
+        app._read_buttons = boom
+        app._button_read_thread(False)
+        assert calls == ["exit", "after"]
+
+
+def test_scanning_shows_the_collected_page_count_when_a_collection_is_open():
+    app = _collecting_app(pages=2)
+    app._show("scanning")
+    assert app.icon.endswith("scanning.png") and app.title == "2"
+    app = _collecting_app(pages=0)
+    app._show("scanning")
+    assert app.icon.endswith("scanning.png") and app.title == ""
+
+
+def test_the_emoji_fallback_for_scanning_also_carries_the_count():
+    app = _collecting_app(pages=3)
+    with patch("scanix500.menubar.app.icon_path", return_value=None):
+        app._show("scanning")
+    assert app.icon is None and app.title == "📄… 3"

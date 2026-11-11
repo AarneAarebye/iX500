@@ -20,7 +20,7 @@ from scanix500.menubar.bridge_settings import (
     save_bridge_destination,
 )
 from scanix500.menubar.pairing import PairingStore, default_pairing_path
-from scanix500.menubar.button_watcher import BUTTON_READERS, FINISH, resolve_device_name
+from scanix500.menubar.button_watcher import BUTTON_READERS, FINISH, resolve_device_name, sane_exit
 from scanix500.menubar.collecting import (
     FinishOutcome,
     MacCollector,
@@ -148,12 +148,13 @@ class ScanixMenuBarApp(rumps.App):
 
     def _show(self, state: str) -> None:
         """Shows the "idle", "scanning" or "collecting" state: the template
-        icon with an empty title (the page count for "collecting"), or the
-        emoji title when the icon file is missing or cannot be loaded. Main
-        thread only (it touches the status item)."""
-        count = str(self._collector.page_count) if state == "collecting" else ""
-        emoji = {"scanning": SCANNING_TITLE,
-                 "collecting": f"{COLLECTING_TITLE} {count}"}.get(state, IDLE_TITLE)
+        icon with an empty title, or with the number of collected pages while
+        a collection is open ("collecting" and "scanning" both), or the emoji
+        title when the icon file is missing or cannot be loaded. Main thread
+        only (it touches the status item)."""
+        count = self._collected_count() if state in ("collecting", "scanning") else ""
+        base = {"scanning": SCANNING_TITLE, "collecting": COLLECTING_TITLE}.get(state, IDLE_TITLE)
+        emoji = f"{base} {count}" if count else base
         path = icon_path(state)
         if path is not None:
             try:
@@ -164,6 +165,14 @@ class ScanixMenuBarApp(rumps.App):
                 pass
         self.icon = None
         self.title = emoji
+
+    def _collected_count(self) -> str:
+        """The page count to show next to the icon; "" without an open collection."""
+        collector = getattr(self, "_collector", None)
+        try:
+            return str(collector.page_count) if collector is not None and collector.is_open else ""
+        except Exception:  # noqa: BLE001 - a title must never break the app
+            return ""
 
     def _resting_state(self) -> str:
         collector = getattr(self, "_collector", None)
@@ -285,6 +294,9 @@ class ScanixMenuBarApp(rumps.App):
         except Exception:  # noqa: BLE001 - must always report back, or polling stops for good
             hit = None
         finally:
+            # A SANE that stays initialised never learns about a scanner plugged in (or
+            # power-cycled) later; start from scratch on the next poll.
+            sane_exit()
             AppHelper.callAfter(self._on_buttons_read, hit)
 
     def _on_buttons_read(self, hit: tuple[str, dict] | None):
