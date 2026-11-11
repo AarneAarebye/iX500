@@ -89,6 +89,7 @@ class ButtonCollector:
         self._resolve_failures = 0
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._poller_done = threading.Event()  # set once the poller has seen stop()
         self._tmp = cfg.state_dir / "button-tmp"
         self._kept = self._tmp / "kept"
         self._finished = cfg.state_dir / "button-finished"
@@ -292,10 +293,14 @@ class ButtonCollector:
                 except Exception:  # noqa: BLE001 - never stop watching over one hiccup
                     logger.exception("button poll failed")
                     self._device = None
+            self._poller_done.set()
+            # A thread that has used SANE must not end: on the Pi its exit segfaults the
+            # whole process. Park it; it is a daemon, so the process still exits.
+            threading.Event().wait()
         self._thread = threading.Thread(target=loop, daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
         self._stop.set()
         if self._thread is not None and self._thread is not threading.current_thread():
-            self._thread.join(JOIN_SECONDS)
+            self._poller_done.wait(JOIN_SECONDS)

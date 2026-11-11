@@ -250,13 +250,16 @@ def test_unusable_output_is_kept(tmp_path):
     assert list((r.cfg.state_dir / "button-tmp" / "kept").glob("*x.pdf"))
 
 
-def test_stop_joins_the_thread(tmp_path):
+def test_stop_waits_for_the_poller_which_then_parks_instead_of_ending(tmp_path):
+    # A worker thread that has used SANE segfaults the Pi's server when it ends,
+    # so the poller is parked (it is a daemon) after its last poll.
     r = Rig(tmp_path, [])
     r.collector._interval = 0.01
     r.collector.start()
     thread = r.collector._thread
     r.collector.stop()
-    assert not thread.is_alive()
+    assert r.collector._poller_done.is_set()
+    assert thread.is_alive() and thread.daemon
 
 
 class _NoLock:
