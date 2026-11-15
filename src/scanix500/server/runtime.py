@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from http.server import ThreadingHTTPServer
 
 from scanix500.menubar.bridge import RemoteOptions, ScanBusyError, make_handler_class
-from scanix500.menubar.button_watcher import button_pressed, resolve_device_name
+from scanix500.menubar.button_watcher import button_pressed, resolve_device_name, sane_exit
 from scanix500.menubar.profiles import Profile
 from scanix500.menubar.runner import ScanResult, run_scan
 from scanix500.server.button_pairing import ButtonPairing
@@ -62,13 +62,17 @@ class ServerScanTrigger:
 class ButtonWatcher:
     """Polls the iX500's Scan button only while a button-pairing request
     is waiting and no scan runs, so the scanner isn't opened every 1.5 s
-    for nothing."""
+    for nothing. SANE is shut down after every access (`reset`): a server that keeps it initialised reads the
+    iX500 through a stale USB handle once the scanner was unplugged or power-cycled, and button pairing then
+    times out until the service restarts."""
 
     def __init__(self, button_pairing: ButtonPairing, trigger: ServerScanTrigger,
                  resolve: Callable[[], str | None] = resolve_device_name,
-                 pressed: Callable[[str], bool] = button_pressed, interval: float = 1.5):
+                 pressed: Callable[[str], bool] = button_pressed, interval: float = 1.5,
+                 reset: Callable[[], None] = sane_exit):
         self._pairing, self._trigger = button_pairing, trigger
         self._resolve, self._pressed, self._interval = resolve, pressed, interval
+        self._reset = reset
         self._device: str | None = None
         self._stop = threading.Event()
 
@@ -77,11 +81,14 @@ class ButtonWatcher:
             return
         try:
             with self._trigger.exclusive():  # never open SANE beside a scan or the 8800F's poller
-                if self._device is None:
-                    self._device = self._resolve()
+                try:
                     if self._device is None:
-                        return
-                pressed = self._pressed(self._device)
+                        self._device = self._resolve()
+                        if self._device is None:
+                            return
+                    pressed = self._pressed(self._device)
+                finally:
+                    self._reset()
         except ScanBusyError:
             return
         if pressed:

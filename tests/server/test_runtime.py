@@ -92,3 +92,34 @@ def test_button_watcher_reads_only_inside_the_trigger_lock():
     with trigger.exclusive():  # lock taken elsewhere: skip the tick
         watcher.poll_once()
     assert held == []
+
+
+def test_watcher_restarts_sane_after_every_hardware_access():
+    # A server that keeps SANE initialised reads the iX500 through a stale USB handle once the scanner
+    # has been unplugged or power-cycled, and pairing by button then times out until the service restarts.
+    bp = ButtonPairing(lambda c: "tok")
+    resets = []
+    watcher = ButtonWatcher(bp, ServerScanTrigger(), resolve=lambda: "dev", pressed=lambda d: False,
+                            reset=lambda: resets.append(1))
+    watcher.poll_once()
+    assert resets == []  # nothing pending: SANE isn't touched
+    bp.request("Mac")
+    watcher.poll_once()
+    assert resets == [1]
+    watcher.poll_once()
+    assert resets == [1, 1]
+
+
+def test_watcher_restarts_sane_when_the_scanner_cannot_be_found_or_read():
+    bp = ButtonPairing(lambda c: "tok")
+    bp.request("Mac")
+    resets = []
+    missing = ButtonWatcher(bp, ServerScanTrigger(), resolve=lambda: None, pressed=lambda d: True,
+                            reset=lambda: resets.append("missing"))
+    missing.poll_once()
+    def broken(device): raise OSError("stale handle")
+    failing = ButtonWatcher(bp, ServerScanTrigger(), resolve=lambda: "dev", pressed=broken,
+                            reset=lambda: resets.append("failing"))
+    with pytest.raises(OSError):
+        failing.poll_once()
+    assert resets == ["missing", "failing"]
